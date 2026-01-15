@@ -1,17 +1,26 @@
 from stable_baselines3 import PPO
-from environment import EconomyEnv
-import numpy as np
+from economy_env import MultiAgentEconomyEnv
 
-# Environment und trainiertes Modell laden
-env = EconomyEnv()
-model = PPO.load("economy_model")
+env = MultiAgentEconomyEnv(n_households=50, n_firms=10)
+model = PPO.load("economy_multiagent_model")
 
-# Testen
 obs, _ = env.reset()
+print("\n" + "="*60)
+print("Testing trained policy")
+print("="*60)
+
 for i in range(100):
-    action, _states = model.predict(obs, deterministic=True)
+    action, _ = model.predict(obs, deterministic=True)
     obs, reward, terminated, truncated, info = env.step(action)
-    print(f"Step {i}: BIP={obs[0]:.2f}, Kapital={obs[1]:.2f}, Reward={reward:.2f}")
+    
+    if i % 20 == 0:
+        env.render()
+        print(f"  Reward: {reward:.2f}")
+        print(f"  Policy: Steuern={action[0]:.2%}, Ausgaben={action[1]:.2%}, Zins={action[2]:.2%}")
     
     if terminated or truncated:
         break
+
+print("\n" + "="*60)
+print("Test abgeschlossen")
+print("="*60)
