@@ -98,13 +98,13 @@ class MARLEconomyEnv(gym.Env):
         gesamtkapital = sum(f.kapital for f in self.firms)
         
         return np.array([
-            self.bip,
+            self.bip / 100000,  # Normalisiert
             arbeitslosenquote,
             self.inflation,
-            avg_lohn,
-            avg_preis,
-            self.staatsschulden,
-            gesamtkapital
+            avg_lohn / 100,  # Normalisiert
+            avg_preis / 100,  # Normalisiert
+            self.staatsschulden / 100000,  # Normalisiert
+            gesamtkapital / 100000  # Normalisiert
         ], dtype=np.float32)
     
     def step(self, actions):
@@ -189,26 +189,45 @@ class MARLEconomyEnv(gym.Env):
             self.inflation = (preis_level_neu - self.preis_level_alt) / self.preis_level_alt
         self.preis_level_alt = preis_level_neu
         
-        # === 9. REWARDS BERECHNEN ===
+        # === 9. REWARDS BERECHNEN (NORMALISIERT!) ===
         markt_info = self._get_markt_info()
         
-        # Reward für jede Firma
+        # Reward für jede Firma (bereits normalisiert in firm.calculate_reward)
         firm_rewards = np.array([firm.calculate_reward(markt_info) for firm in self.firms])
         
-        # Reward für Regierung
+        # === REGIERUNGS-REWARD (NEU: NORMALISIERT!) ===
         arbeitslose = sum(1 for h in self.households if not h.arbeitet)
         arbeitslosenquote = arbeitslose / self.n_households
         
+        # BIP-Wachstum: Ziel 50k, normalisiert auf -5 bis +5
+        bip_ziel = 50000
+        bip_reward = np.clip((self.bip - bip_ziel) / 10000, -5, 5)
+        
+        # Inflation: Ziel 2%, bestraft Abweichung
+        inflation_penalty = -abs(self.inflation - 0.02) * 100
+        inflation_penalty = np.clip(inflation_penalty, -5, 0)
+        
+        # Arbeitslosigkeit: 0% = gut, 100% = schlecht
+        arbeitslosigkeit_penalty = -arbeitslosenquote * 10
+        
+        # Staatsschulden: unter 20k = ok, darüber = schlecht
+        if self.staatsschulden < 20000:
+            schulden_penalty = 0
+        else:
+            schulden_penalty = -(self.staatsschulden - 20000) / 10000
+            schulden_penalty = np.clip(schulden_penalty, -5, 0)
+        
+        # GESAMT-REWARD: Zwischen ca. -20 und +10
         gov_reward = (
-            (self.bip - 50000) / 500 +  # BIP-Wachstum
-            -abs(self.inflation - 0.02) * 500 +  # Ziel-Inflation 2%
-            -arbeitslosenquote * 100 +  # Arbeitslosigkeit
-            -self.staatsschulden * 0.001  # Schulden
+            bip_reward +
+            inflation_penalty +
+            arbeitslosigkeit_penalty +
+            schulden_penalty
         )
         
         rewards = {
             'firms': firm_rewards,
-            'government': gov_reward
+            'government': float(gov_reward)
         }
         
         # === 10. TERMINATION ===
