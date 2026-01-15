@@ -1,0 +1,11 @@
+# Fallback ohne Ray (für Python 3.14+)
+# Nutzt Stable-Baselines3 statt RLlib
+
+stable-baselines3==2.3.2
+gymnasium==0.29.1
+torch>=2.0.0
+
+# Utilities
+numpy>=1.24.0,<2.0.0
+matplotlib>=3.8.0
+pandas>=2.0.0
