@@ -1,13 +1,52 @@
-# VWL-Simulation mit Multi-Agent Reinforcement Learning
+# Multi-Agent Volkswirtschafts-Simulation mit Reinforcement Learning
 
-## 🎯 Projektübersicht
+**Projektdauer:** 6 Wochen | **DHSH Fortgeschrittene KI-Anwendungen**
 
-Volkswirtschafts-Simulation mit Reinforcement Learning für das Modul **Fortgeschrittene KI-Anwendungen** (DHSH).
+## 🎯 Projektziel
 
-### Agents:
-- **10 Unternehmen** (RL-Agents): Lernen Preissetzung, Produktionsmenge, Löhne
-- **1 Regierung** (RL-Agent): Lernt Steuerpolitik, Staatsausgaben, Leitzins
-- **50 Haushalte** (Regelbasiert): Konsum, Sparen, Arbeiten
+Simulation einer Volkswirtschaft wo **10 Unternehmen** durch Reinforcement Learning lernen:
+- Optimale Preissetzung
+- Produktionsmenge anpassen
+- Löhne festlegen
+- Auf Marktveränderungen reagieren
+
+**Forschungsfragen:**
+- Bilden sich Kartelle?
+- Entstehen Preiskrämpfe?
+- Wie reagieren Agents auf Wirtschaftsschocks?
+- Können Agents nachhaltige Strategien lernen?
+
+---
+
+## 📅 Zeitplan
+
+### **Woche 1-2: Foundation** ← AKTUELL
+- [x] Projekt-Setup
+- [ ] RLlib Multi-Agent Environment
+- [ ] Erste Firma erfolgreich trainiert
+- [ ] Bug-Fixes & Stabilisierung
+
+### **Woche 3: Multi-Agent Training**
+- [ ] 3-5 Firmen simultan trainieren
+- [ ] Emergente Verhaltensweisen beobachten
+- [ ] Reward-Tuning
+
+### **Woche 4: Szenarien**
+- [ ] Wirtschaftsschocks implementieren
+- [ ] Robustheitstests
+- [ ] Visualisierungen
+
+### **Woche 5: Erweiterungen**
+- [ ] Regierung als Agent (optional)
+- [ ] Komplexere Interaktionen
+- [ ] Feature-Erweiterungen
+
+### **Woche 6: Analyse & Dokumentation**
+- [ ] Experimente durchführen
+- [ ] Ergebnisse auswerten
+- [ ] Abschlussbericht
+
+---
 
 ## 🚀 Quick Start
 
@@ -17,72 +56,63 @@ git clone https://github.com/H3nri5H/VWL-Simulation-RL.git
 cd VWL-Simulation-RL
 pip install -r requirements.txt
 
-# Training (Regierung mit Random Firmen)
+# Erstes Training (1 Firma)
+python train_single.py
+
+# Multi-Agent Training
 python train_marl.py
 
 # Testen
-python test_marl.py
+python test.py
 ```
 
-## 📋 Struktur
+---
+
+## 📋 Projektstruktur
 
 ```
 VWL-Simulation-RL/
-├── agents/
-│   ├── household.py      # Haushalte (regelbasiert)
-│   └── firm.py           # Unternehmen (RL-Agent)
-├── marl_economy_env.py   # Haupt-Environment
-├── train_marl.py         # Training
-├── test_marl.py          # Testing
-└── requirements.txt
+├── agents/               # Agent-Klassen
+│   ├── firm.py          # Unternehmen (RL-Agent)
+│   └── household.py     # Haushalt (regelbasiert)
+├── envs/                # Environments
+│   ├── economy_env.py   # PettingZoo MARL Environment
+│   └── scenarios.py     # Wirtschaftsschocks
+├── train_single.py      # 1 Firma trainieren
+├── train_marl.py        # Multi-Agent Training
+├── test.py              # Testen & Visualisierung
+├── config.py            # Hyperparameter
+└── utils/               # Helper-Funktionen
+    ├── visualization.py
+    └── metrics.py
 ```
 
-## 🧠 Konzept
+---
 
-### Unternehmen (RL-Agents)
-**Observation Space (10 Features):**
-- Eigenes Kapital, Preis, Lohn, Mitarbeiter
-- Eigener Gewinn, Marktanteil
-- Markt: Durchschnittspreis, Nachfrage, Angebot, Arbeitslosenquote
+## 🧠 Technologie-Stack
 
-**Action Space:**
-- Preisänderung (-10% bis +10%)
-- Mitarbeiteränderung (-5 bis +5)
-- Lohnänderung (-5% bis +5%)
+- **RLlib (Ray):** Multi-Agent RL Framework
+- **PettingZoo:** Multi-Agent Environment Standard
+- **TensorFlow:** Neural Networks
+- **Gymnasium:** RL Environment API
 
-**Reward:**
-- Gewinn (Hauptziel)
-- Marktanteil (langfristig)
-- Kapitalstabilität
-- Effizienz (verkauft/produziert)
-- Beschäftigung (soziale Verantwortung)
+---
 
-### Regierung (RL-Agent)
-**Observation:** BIP, Arbeitslosigkeit, Inflation, Schulden
+## 📊 Nächste Schritte
 
-**Action:** Steuersatz, Staatsausgaben, Leitzins
+1. **HEUTE:** RLlib Setup & Environment-Konvertierung
+2. **Diese Woche:** Erste erfolgreiche Trainings
+3. **Nächste Woche:** Multi-Agent Experimente starten
 
-**Reward:** BIP-Wachstum, niedrige Inflation, niedrige Arbeitslosigkeit
+---
 
-## ⚠️ Limitation
+## 📄 Dokumentation
 
-Die aktuelle Implementierung nutzt **Stable-Baselines3**, das kein natives Multi-Agent Learning unterstützt.
+Siehe [docs/](docs/) für:
+- Technische Dokumentation
+- Experiment-Logs
+- Ergebnisse & Analysen
 
-### Für echtes MARL:
-1. **RLlib** (Ray): Industry-Standard für MARL
-2. **PettingZoo**: Multi-Agent Gym-Wrapper
+---
 
-Aktuell: Regierung wird trainiert, Firmen machen Random Actions.
-
-## 📈 Nächste Schritte
-
-1. Integration mit RLlib für echtes Multi-Agent Learning
-2. Szenarien: Steuererhöhung, Rezession, Naturkatastrophen
-3. Analyse: Kartellbildung, Preiskampf, Marktkonzentration
-4. Erweitern: Banken, Zentralbank, Export/Import
-
-## 📚 Quellen
-
-- **Cobb-Douglas Produktion**: Standard-Ökonometrie
-- **Phillips-Kurve**: Inflation-Arbeitslosigkeit Trade-off
-- **Multi-Agent RL**: Emergente Verhaltensweisen in Wirtschaftssystemen
+**Status:** 🟡 In Entwicklung | **Letzte Aktualisierung:** 15.01.2026
