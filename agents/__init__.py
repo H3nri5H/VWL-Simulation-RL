@@ -1,4 +1,4 @@
-from .household import Household
 from .firm import Firm
+from .household import Household
 
-__all__ = ['Household', 'Firm']
+__all__ = ['Firm', 'Household']

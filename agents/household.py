@@ -1,44 +1,42 @@
+"""Haushalt mit regelbasiertem Verhalten"""
 import numpy as np
 
 class Household:
-    """Haushalt mit Konsum-, Spar- und Arbeitsverhalten"""
+    """
+    Haushalt konsumiert und spart basierend auf Einkommen.
+    Kein RL - regelbasiertes Verhalten.
+    """
     
     def __init__(self, household_id):
         self.id = household_id
-        # Zufällige Eigenschaften
-        self.vermoegen = np.random.uniform(1000, 5000)
-        self.einkommen = 0.0
-        self.sparquote = np.random.uniform(0.05, 0.25)  # 5-25% sparen
-        self.konsumneigung = np.random.uniform(0.6, 0.9)  # 60-90% konsumieren
-        self.arbeitsproduktivitaet = np.random.uniform(0.8, 1.2)
-        self.arbeitet = True
         
-    def arbeiten(self, lohn):
-        """Haushalt arbeitet und erhält Einkommen"""
-        if self.arbeitet:
-            self.einkommen = lohn * self.arbeitsproduktivitaet
-            return self.arbeitsproduktivitaet
-        return 0.0
+        # Eigenschaften
+        self.vermoegen = np.random.uniform(2000, 8000)
+        self.sparquote = np.random.uniform(0.1, 0.3)  # 10-30% sparen
+        self.konsumneigung = np.random.uniform(0.7, 0.95)  # 70-95% des Einkommens
+        
+        # Zustand
+        self.einkommen = 0.0
+        self.konsum = 0.0
     
-    def konsumieren(self, preise):
-        """Haushalt konsumiert basierend auf Einkommen und Vermögen"""
-        verfuegbar = self.einkommen + self.vermoegen * 0.05  # 5% Vermögen nutzbar
-        konsum = verfuegbar * self.konsumneigung
+    def receive_income(self, avg_lohn):
+        """Einkommen basierend auf durchschnittlichem Lohn"""
+        self.einkommen = avg_lohn
+    
+    def konsumieren(self):
+        """Konsumentscheidung treffen"""
+        # Konsum = Anteil des Einkommens + kleiner Teil des Vermögens
+        self.konsum = self.einkommen * self.konsumneigung + \
+                      self.vermoegen * 0.02  # 2% Vermögen
         
         # Sparen
         ersparnis = self.einkommen * self.sparquote
         self.vermoegen += ersparnis
         
-        # Vermögen reduzieren durch Konsum
-        self.vermoegen -= max(0, konsum - self.einkommen)
-        self.vermoegen = max(0, self.vermoegen)
+        # Vermögen reduzieren wenn Konsum > Einkommen
+        if self.konsum > self.einkommen:
+            self.vermoegen -= (self.konsum - self.einkommen)
         
-        return konsum
-    
-    def get_state(self):
-        """Zustand des Haushalts"""
-        return {
-            'vermoegen': self.vermoegen,
-            'einkommen': self.einkommen,
-            'sparquote': self.sparquote
-        }
+        self.vermoegen = max(0, self.vermoegen)  # Kein negatives Vermögen
+        
+        return self.konsum

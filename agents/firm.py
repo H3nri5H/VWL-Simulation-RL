@@ -1,239 +1,137 @@
+"""Unternehmen als RL-Agent mit vereinfachtem Action Space"""
 import numpy as np
 
 class Firm:
     """
-    Unternehmen als RL-Agent.
-    Lernt: Preissetzung, Produktionsmenge, Löhne
-    
-    Jedes Unternehmen hat individuelle Eigenschaften und lernt
-    durch Reinforcement Learning optimale Strategien.
+    Unternehmen lernt durch RL:
+    - Preis setzen
+    - Produktionsmenge anpassen (implizit durch Mitarbeiter)
+    - Löhne festlegen
     """
     
     def __init__(self, firm_id):
         self.id = firm_id
         
-        # === EIGENSCHAFTEN (fix während Simulation) ===
-        # Produktivität: Wie effizient das Unternehmen produziert
-        self.produktivitaet = np.random.uniform(0.7, 1.3)
+        # === EIGENSCHAFTEN (konstant) ===
+        self.produktivitaet = np.random.uniform(0.8, 1.2)  # Wie effizient produziert wird
+        self.fixkosten = np.random.uniform(500, 1000)  # Monatliche Fixkosten
         
-        # Fixkosten: Müssen jeden Monat bezahlt werden (Miete, etc.)
-        self.fixkosten = np.random.uniform(500, 1500)
+        # === ZUSTAND (veränderlich) ===
+        self.kapital = np.random.uniform(10000, 20000)
+        self.preis = 100.0  # Startpreis
+        self.lohn = 50.0    # Startlohn
+        self.mitarbeiter = 10  # Startmitarbeiter
         
-        # Variable Kosten pro Einheit: Material, Energie, etc.
-        self.variable_kosten_pro_einheit = np.random.uniform(30, 50)
+        # === PERFORMANCE ===
+        self.produktion = 0.0
+        self.verkauft = 0.0
+        self.umsatz = 0.0
+        self.gewinn = 0.0
+        self.marktanteil = 0.0
         
-        # === ZUSTANDSVARIABLEN (verändern sich) ===
-        # Startkapital des Unternehmens
-        self.kapital = np.random.uniform(5000, 15000)
-        
-        # Aktueller Preis für Produkte
-        self.preis = np.random.uniform(80, 120)
-        
-        # Aktueller Lohn für Mitarbeiter
-        self.lohn = np.random.uniform(40, 60)
-        
-        # Anzahl beschäftigter Mitarbeiter
-        self.mitarbeiter = 0
-        
-        # === PERFORMANCE-METRIKEN ===
-        self.produktion = 0.0  # Produzierte Einheiten
-        self.verkauft = 0.0     # Verkaufte Einheiten
-        self.umsatz = 0.0       # Einnahmen
-        self.gewinn = 0.0       # Profit
-        self.marktanteil = 0.0  # Anteil am Gesamtmarkt
-        
-        # History für Lernkurve
+        # History
         self.gewinn_history = []
-        self.marktanteil_history = []
+        self.preis_history = []
     
-    def get_observation(self, markt_info):
+    def apply_action(self, action):
         """
-        Observation Space für RL-Agent:
-        - Eigener Zustand (Kapital, Preis, Mitarbeiter, etc.)
-        - Marktinformationen (Durchschnittspreise, Nachfrage, etc.)
+        Action Space: [preis_faktor, lohn_faktor, mitarbeiter_change]
+        - preis_faktor: 0.8 - 1.2 (Preis um ±20% ändern)
+        - lohn_faktor: 0.9 - 1.1 (Lohn um ±10% ändern)
+        - mitarbeiter_change: -5 bis +5
+        """
+        preis_faktor, lohn_faktor, mitarbeiter_change = action
         
-        Returns: numpy array mit 10 Features
-        """
-        return np.array([
-            self.kapital / 10000,              # 0: Normalisiertes Kapital
-            self.preis / 100,                   # 1: Normalisierter Preis
-            self.lohn / 50,                     # 2: Normalisierter Lohn
-            self.mitarbeiter / 50,              # 3: Normalisierte Mitarbeiteranzahl
-            self.gewinn / 1000,                 # 4: Normalisierter Gewinn
-            self.marktanteil,                   # 5: Marktanteil (0-1)
-            markt_info['avg_preis'] / 100,      # 6: Durchschnittspreis am Markt
-            markt_info['nachfrage'] / 10000,    # 7: Gesamtnachfrage
-            markt_info['angebot'] / 10000,      # 8: Gesamtangebot
-            markt_info['arbeitslosenquote']     # 9: Arbeitslosenquote
-        ], dtype=np.float32)
-    
-    def apply_action(self, action, max_mitarbeiter=50):
-        """
-        RL-Agent wählt Aktion:
-        action[0]: Preisänderung (-1 bis +1, wird zu -10% bis +10%)
-        action[1]: Mitarbeiteränderung (-1 bis +1)
-        action[2]: Lohnänderung (-1 bis +1, wird zu -5% bis +5%)
-        """
-        # === PREIS ANPASSEN ===
-        # Action zwischen -1 und +1, wird zu -10% bis +10%
-        preis_aenderung = action[0] * 0.10
-        self.preis *= (1 + preis_aenderung)
-        # Preis muss zwischen 50 und 200 bleiben (realistisch)
-        self.preis = np.clip(self.preis, 50, 200)
+        # Preis anpassen
+        self.preis *= preis_faktor
+        self.preis = np.clip(self.preis, 50, 200)  # Realistischer Bereich
         
-        # === MITARBEITER ANPASSEN ===
-        # Action zwischen -1 und +1, wird zu -5 bis +5 Mitarbeiter
-        mitarbeiter_aenderung = int(action[1] * 5)
-        self.mitarbeiter += mitarbeiter_aenderung
-        # Kann nicht mehr einstellen als bezahlbar oder max_mitarbeiter
-        max_bezahlbar = int(self.kapital / (self.lohn * 12))  # 12 Monate Lohn
-        self.mitarbeiter = np.clip(self.mitarbeiter, 0, min(max_mitarbeiter, max_bezahlbar))
+        # Lohn anpassen
+        self.lohn *= lohn_faktor
+        self.lohn = np.clip(self.lohn, 30, 100)  # Mindest-/Maximallohn
         
-        # === LOHN ANPASSEN ===
-        # Action zwischen -1 und +1, wird zu -5% bis +5%
-        lohn_aenderung = action[2] * 0.05
-        self.lohn *= (1 + lohn_aenderung)
-        # Mindestlohn 30, Maximallohn 100
-        self.lohn = np.clip(self.lohn, 30, 100)
+        # Mitarbeiter anpassen
+        self.mitarbeiter += int(mitarbeiter_change)
+        self.mitarbeiter = max(0, min(self.mitarbeiter, 50))  # 0-50 Mitarbeiter
     
     def produzieren(self):
-        """
-        Produktionsfunktion: Cobb-Douglas
-        Y = A * K^0.4 * L^0.6
-        
-        A = Produktivität
-        K = Kapital
-        L = Arbeitskräfte (Mitarbeiter)
-        """
-        if self.mitarbeiter > 0:
+        """Cobb-Douglas Produktionsfunktion: Y = A * K^0.3 * L^0.7"""
+        if self.mitarbeiter > 0 and self.kapital > 0:
             self.produktion = self.produktivitaet * \
-                (self.kapital ** 0.4) * \
-                (self.mitarbeiter ** 0.6)
+                (self.kapital ** 0.3) * \
+                (self.mitarbeiter ** 0.7)
         else:
             self.produktion = 0.0
-        
         return self.produktion
     
-    def verkaufen(self, nachfrage_gesamt, angebot_gesamt, alle_preise):
-        """
-        Verkauf am Markt mit Preiswettbewerb:
-        - Günstigere Firmen verkaufen mehr
-        - Marktanteil hängt von relativem Preis ab
-        
-        Returns: Anzahl verkaufter Einheiten
-        """
-        if angebot_gesamt == 0 or self.produktion == 0:
-            self.verkauft = 0.0
-            self.umsatz = 0.0
-            self.gewinn = -self.fixkosten
-            return 0.0
-        
-        # === MARKTANTEIL BASIEREND AUF PREIS ===
-        # Günstigere Firmen bekommen höheren Marktanteil
-        avg_preis = np.mean(alle_preise)
-        
-        # Preiswettbewerbsfaktor: Je günstiger, desto höher
-        # Wenn Preis = avg_preis -> Faktor = 1.0
-        # Wenn Preis < avg_preis -> Faktor > 1.0 (mehr Marktanteil)
-        # Wenn Preis > avg_preis -> Faktor < 1.0 (weniger Marktanteil)
-        preis_wettbewerb_faktor = (avg_preis / self.preis) ** 2
-        
-        # Kapazitätsanteil: Wie viel kann die Firma liefern?
-        kapazitaets_anteil = self.produktion / angebot_gesamt
-        
-        # Kombinierter Marktanteil
-        gewichteter_anteil = kapazitaets_anteil * preis_wettbewerb_faktor
-        
-        # Normalisierung kommt später durch alle Firmen
-        # Hier nur: Was könnte maximal verkauft werden?
-        max_verkauf = min(self.produktion, nachfrage_gesamt * gewichteter_anteil)
-        self.verkauft = max_verkauf
-        
-        # === FINANZEN BERECHNEN ===
-        # Umsatz = Verkaufte Einheiten * Preis
-        self.umsatz = self.verkauft * self.preis
-        
-        # Kosten berechnen
+    def berechne_kosten(self):
+        """Gesamtkosten berechnen"""
         lohnkosten = self.mitarbeiter * self.lohn
-        variable_kosten = self.verkauft * self.variable_kosten_pro_einheit
-        gesamtkosten = self.fixkosten + lohnkosten + variable_kosten
+        return self.fixkosten + lohnkosten
+    
+    def update_finanzen(self, verkaufte_menge):
+        """Finanzen nach Verkauf aktualisieren"""
+        self.verkauft = verkaufte_menge
+        self.umsatz = self.verkauft * self.preis
+        kosten = self.berechne_kosten()
+        self.gewinn = self.umsatz - kosten
         
-        # Gewinn = Umsatz - Kosten
-        self.gewinn = self.umsatz - gesamtkosten
-        
-        # === KAPITAL ANPASSEN ===
-        # Gewinn wird teilweise reinvestiert (70%)
+        # Kapital anpassen (70% des Gewinns reinvestieren)
         self.kapital += self.gewinn * 0.7
-        
-        # Unternehmen kann nicht unter Mindestkapital fallen
-        self.kapital = max(1000, self.kapital)
-        
-        # Bei negativem Kapital: Insolvenzrisiko
-        if self.kapital < 2000:
-            # Notverkauf von Assets / Kreditaufnahme
-            self.kapital = 2000
-            self.gewinn -= 500  # Strafkosten
+        self.kapital = max(1000, self.kapital)  # Mindestkapital
         
         # History speichern
         self.gewinn_history.append(self.gewinn)
-        self.marktanteil_history.append(self.marktanteil)
-        
-        return self.verkauft
+        self.preis_history.append(self.preis)
     
-    def calculate_reward(self, markt_info):
+    def get_observation(self, markt_info):
         """
-        Reward-Funktion für RL-Agent:
+        Observation für RL-Agent (8 Features):
+        - Eigene Metriken: Kapital, Preis, Lohn, Mitarbeiter, Gewinn
+        - Markt: Durchschnittspreis, Nachfrage, Angebot
+        """
+        return np.array([
+            self.kapital / 20000,           # Normalisiert
+            self.preis / 100,               # Normalisiert
+            self.lohn / 50,                 # Normalisiert
+            self.mitarbeiter / 50,          # Normalisiert
+            self.gewinn / 1000,             # Normalisiert
+            markt_info['avg_preis'] / 100,  # Durchschnittspreis
+            markt_info['nachfrage'] / 1000, # Gesamtnachfrage
+            markt_info['angebot'] / 1000    # Gesamtangebot
+        ], dtype=np.float32)
+    
+    def calculate_reward(self):
+        """
+        Reward-Funktion:
         - Gewinn (Hauptziel)
         - Marktanteil (langfristige Position)
-        - Kapitalstabilität
-        
-        Returns: float reward
+        - Stabilität (Kapitaldecke)
         """
-        # === KOMPONENTEN ===
-        # 1. Gewinn-Reward (normalisiert)
-        gewinn_reward = self.gewinn / 100
+        # Gewinn-Reward (normalisiert)
+        gewinn_reward = np.clip(self.gewinn / 100, -10, 10)
         
-        # 2. Marktanteil-Reward (langfristige Position)
-        marktanteil_reward = self.marktanteil * 50
+        # Marktanteil-Reward
+        marktanteil_reward = self.marktanteil * 5
         
-        # 3. Kapitalstabilität (bestraft niedrige Kapitaldecke)
-        if self.kapital < 3000:
-            kapital_penalty = -10
+        # Kapital-Penalty bei niedrigem Kapital
+        if self.kapital < 5000:
+            kapital_penalty = -5
         else:
             kapital_penalty = 0
         
-        # 4. Effizienz-Bonus (verkauft alles was produziert wird)
-        if self.produktion > 0:
-            effizienz = self.verkauft / self.produktion
-            effizienz_bonus = effizienz * 5
-        else:
-            effizienz_bonus = 0
-        
-        # 5. Beschäftigung-Bonus (soziale Verantwortung)
-        beschaftigung_bonus = self.mitarbeiter * 0.2
-        
-        # === GESAMT-REWARD ===
-        total_reward = (
-            gewinn_reward +
-            marktanteil_reward +
-            kapital_penalty +
-            effizienz_bonus +
-            beschaftigung_bonus
-        )
-        
-        return total_reward
+        return gewinn_reward + marktanteil_reward + kapital_penalty
     
     def get_state(self):
-        """Zustand für Logging/Debugging"""
+        """Dict für Logging"""
         return {
             'id': self.id,
-            'kapital': self.kapital,
-            'preis': self.preis,
-            'lohn': self.lohn,
+            'kapital': round(self.kapital, 0),
+            'preis': round(self.preis, 1),
+            'lohn': round(self.lohn, 1),
             'mitarbeiter': self.mitarbeiter,
-            'produktion': self.produktion,
-            'verkauft': self.verkauft,
-            'gewinn': self.gewinn,
-            'marktanteil': self.marktanteil,
-            'umsatz': self.umsatz
+            'produktion': round(self.produktion, 1),
+            'verkauft': round(self.verkauft, 1),
+            'gewinn': round(self.gewinn, 0),
+            'marktanteil': round(self.marktanteil * 100, 1)
         }
