@@ -10,7 +10,7 @@ class Household:
         self.einkommen = 0.0
         self.sparquote = np.random.uniform(0.05, 0.25)  # 5-25% sparen
         self.konsumneigung = np.random.uniform(0.6, 0.9)  # 60-90% konsumieren
-        self.arbeitsproduktivitaet = np vp.random.uniform(0.8, 1.2)
+        self.arbeitsproduktivitaet = np.random.uniform(0.8, 1.2)
         self.arbeitet = True
         
     def arbeiten(self, lohn):
