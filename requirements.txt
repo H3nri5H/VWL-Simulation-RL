@@ -1,12 +1,12 @@
 # Core RL Framework
-ray[rllib]==2.40.0
-tensorflow==2.18.0
+ray[rllib]==2.9.0
+tensorflow==2.15.0
 
 # Environment
 gymnasium==0.29.1
 pettingzoo==1.24.3
 
 # Utilities
-numpy>=1.26.0
+numpy>=1.24.0,<2.0.0
 matplotlib>=3.8.0
 pandas>=2.0.0
