@@ -1,5 +1,6 @@
 """Training script für Multi-Agent RL Volkswirtschaft"""
 
+import gymnasium as gym
 from stable_baselines3 import PPO
 from marl_economy_env import MARLEconomyEnv
 import numpy as np
@@ -58,7 +59,6 @@ class GovOnlyWrapper(gym.Env):
         
         return obs['government'], rewards['government'], terminated, truncated, info
 
-import gymnasium as gym
 wrapped_env = GovOnlyWrapper(env)
 
 print("Starte Training (Government Agent mit Random Firms)...")
