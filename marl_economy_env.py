@@ -92,7 +92,7 @@ class MARLEconomyEnv(gym.Env):
     def _get_gov_observation(self):
         """Observation für Regierung"""
         arbeitende = sum(1 for h in self.households if h.arbeitet)
-        arbeitslosenquote = 1.0 - (arbeitande / self.n_households)
+        arbeitslosenquote = 1.0 - (arbeitende / self.n_households)
         avg_lohn = np.mean([f.lohn for f in self.firms])
         avg_preis = np.mean([f.preis for f in self.firms])
         gesamtkapital = sum(f.kapital for f in self.firms)
