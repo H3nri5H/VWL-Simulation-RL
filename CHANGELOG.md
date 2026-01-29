@@ -12,6 +12,15 @@ Diese Datei dokumentiert alle wichtigen Änderungen am Projekt. Jeder Commit wir
 
 ---
 
+## [2026-01-29] - 1a65e51
+### Dependency-Vereinfachung
+- Unnötige Version-Constraints entfernt (NumPy, Pandas, Matplotlib, etc.)
+- Nur noch **kritische** Versionen fixiert:
+  - `ray[rllib]>=2.10.0` (RLlib API-Stabilität)
+  - `pyarrow<21.0.0` (Ray-Kompatibilität)
+- **Vorteil**: pip löst Dependencies automatisch, weniger Konflikte
+- **Prinzip**: "So wenig Version-Constraints wie möglich, so viel wie nötig"
+
 ## [2026-01-29] - 75d87e0
 ### PyArrow Kompatibilitäts-Fix
 - PyArrow Version Constraint `>=6.0.0,<21.0.0` hinzugefügt zu requirements.txt
