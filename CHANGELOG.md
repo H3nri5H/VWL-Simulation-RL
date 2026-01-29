@@ -12,6 +12,13 @@ Diese Datei dokumentiert alle wichtigen Änderungen am Projekt. Jeder Commit wir
 
 ---
 
+## [2026-01-29] - c60feee
+### PyTorch hinzugefügt
+- `torch` zu requirements.txt hinzugefügt
+- **Grund**: RLlib braucht ein Deep Learning Framework (PyTorch oder TensorFlow)
+- `train.py` nutzt `.framework('torch')` → PyTorch muss installiert sein
+- Behebt ImportError beim Training-Start
+
 ## [2026-01-29] - 1a65e51
 ### Dependency-Vereinfachung
 - Unnötige Version-Constraints entfernt (NumPy, Pandas, Matplotlib, etc.)
