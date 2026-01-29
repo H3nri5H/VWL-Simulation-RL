@@ -12,6 +12,12 @@ Diese Datei dokumentiert alle wichtigen Änderungen am Projekt. Jeder Commit wir
 
 ---
 
+## [2026-01-29] - 80f445e
+### Dependency Fix
+- Gymnasium Version Constraint von `==0.29.1` zu `>=0.29.0` geändert
+- Vermeidet Installationskonflikte mit verschiedenen Python-Versionen und abhängigen Packages
+- Installation ist jetzt flexibler und robuster
+
 ## [2026-01-29] - 49d31d9
 ### Action Space Verbesserung
 - Action Space von `Discrete(9)` zu `MultiDiscrete([5, 5])` geändert
