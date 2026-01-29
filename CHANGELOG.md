@@ -12,6 +12,19 @@ Diese Datei dokumentiert alle wichtigen Änderungen am Projekt. Jeder Commit wir
 
 ---
 
+## [2026-01-29] - 75d87e0
+### PyArrow Kompatibilitäts-Fix
+- PyArrow Version Constraint `>=6.0.0,<21.0.0` hinzugefügt zu requirements.txt
+- **Problem**: Ray 2.10.0 nutzt `PyExtensionType`, das in PyArrow 21.0.0 entfernt wurde
+- **Lösung**: PyArrow auf Version < 21.0.0 beschränkt
+- Behebt Fehler: `module 'pyarrow' has no attribute 'PyExtensionType'`
+
+## [2026-01-29] - 80f445e
+### Dependency Fix
+- Gymnasium Version Constraint von `==0.29.1` zu `>=0.29.0` geändert
+- Vermeidet Installationskonflikte mit verschiedenen Python-Versionen und abhängigen Packages
+- Installation ist jetzt flexibler und robuster
+
 ## [2026-01-29] - 49d31d9
 ### Action Space Verbesserung
 - Action Space von `Discrete(9)` zu `MultiDiscrete([5, 5])` geändert
