@@ -3,7 +3,8 @@
 ray[rllib]>=2.10.0
 
 # Deep Learning Framework (für RLlib Neural Networks)
-torch
+# TensorFlow statt PyTorch wegen besserer Windows-Kompatibilität
+tensorflow
 
 # Environment APIs
 gymnasium
