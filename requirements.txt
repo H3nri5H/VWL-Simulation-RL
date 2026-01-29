@@ -2,6 +2,9 @@
 # Ray 2.10.0 wegen stabiler RLlib API - neuere Versionen können auch funktionieren
 ray[rllib]>=2.10.0
 
+# Deep Learning Framework (für RLlib Neural Networks)
+torch
+
 # Environment APIs
 gymnasium
 pettingzoo
