@@ -1,7 +1,7 @@
 """Economy Environment for Multi-Agent RL Volkswirtschaftssimulation."""
 
 import numpy as np
-from gymnasium.spaces import Box, Discrete
+from gymnasium.spaces import Box, MultiDiscrete
 from pettingzoo import AECEnv
 from pettingzoo.utils import agent_selector
 
@@ -18,8 +18,9 @@ class EconomyEnv(AECEnv):
     - Marktdurchschnitte
     
     Action Space:
-    - Preis-Anpassung (-10% bis +10%)
-    - Lohn-Anpassung (-10% bis +10%)
+    - MultiDiscrete([5, 5]):
+      - Dimension 0 (Preis): 0=-10%, 1=-5%, 2=0%, 3=+5%, 4=+10%
+      - Dimension 1 (Lohn): 0=-10%, 1=-5%, 2=0%, 3=+5%, 4=+10%
     """
     
     metadata = {'render_modes': ['human'], 'name': 'economy_v0'}
@@ -46,10 +47,10 @@ class EconomyEnv(AECEnv):
             for agent in self.possible_agents
         }
         
-        # Action Space: Diskret mit 9 Aktionen (Preis/Lohn: -10%, -5%, 0%, +5%, +10%)
-        # Action Index: 0-4 für Preis, 5-8 für Lohn kombiniert -> Vereinfacht zu 9 Kombinationen
+        # Action Space: MultiDiscrete für separate Preis- und Lohn-Entscheidungen
+        # [Preis-Aktion (0-4), Lohn-Aktion (0-4)]
         self.action_spaces = {
-            agent: Discrete(9)
+            agent: MultiDiscrete([5, 5])
             for agent in self.possible_agents
         }
         
@@ -88,7 +89,10 @@ class EconomyEnv(AECEnv):
         
         agent = self.agent_selection
         
-        # TODO: Implement action logic (price/wage adjustment)
+        # Decode action to price and wage adjustments
+        price_delta, wage_delta = self._decode_action(action)
+        
+        # TODO: Apply price_delta and wage_delta to firm state
         # TODO: Implement market clearing
         # TODO: Calculate rewards
         
@@ -106,6 +110,23 @@ class EconomyEnv(AECEnv):
         """Return observation for given agent."""
         # TODO: Construct observation from state
         return np.zeros(7, dtype=np.float32)  # Placeholder
+    
+    def _decode_action(self, action):
+        """Konvertiert MultiDiscrete Action zu Preis- und Lohn-Änderungen.
+        
+        Args:
+            action: np.array([price_action, wage_action]) mit Werten 0-4
+            
+        Returns:
+            tuple: (price_delta, wage_delta) als Prozentsätze (z.B. -0.10 für -10%)
+        """
+        # Mapping: 0 → -10%, 1 → -5%, 2 → 0%, 3 → +5%, 4 → +10%
+        changes = [-0.10, -0.05, 0.0, 0.05, 0.10]
+        
+        price_delta = changes[action[0]]
+        wage_delta = changes[action[1]]
+        
+        return price_delta, wage_delta
     
     def render(self):
         """Render environment (optional)."""
