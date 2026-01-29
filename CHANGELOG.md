@@ -12,7 +12,16 @@ Diese Datei dokumentiert alle wichtigen Änderungen am Projekt. Jeder Commit wir
 
 ---
 
-## [2026-01-29] - Initial Commit
+## [2026-01-29] - 49d31d9
+### Action Space Verbesserung
+- Action Space von `Discrete(9)` zu `MultiDiscrete([5, 5])` geändert
+- Firmen können jetzt **separat** über Preis und Lohn entscheiden:
+  - Dimension 0 (Preis): 0=-10%, 1=-5%, 2=0%, 3=+5%, 4=+10%
+  - Dimension 1 (Lohn): 0=-10%, 1=-5%, 2=0%, 3=+5%, 4=+10%
+- `_decode_action()` Hilfsmethode hinzugefügt zur Konvertierung von Actions zu Prozentänderungen
+- Docstring in `economy_env.py` aktualisiert
+
+## [2026-01-29] - 63b61ed
 ### Projekt-Setup
 - Repository erstellt
 - Grundlegende Projektstruktur angelegt:
