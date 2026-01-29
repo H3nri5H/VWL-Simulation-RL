@@ -48,26 +48,28 @@ def list_models():
     """Liste aller verfügbaren trainierten Modelle.
     
     Returns:
-        dict: {"models": ["checkpoint_000100", "checkpoint_000200", ...]}
+        dict: {"models": ["random", "checkpoint_000100", "checkpoint_000200", ...]}
     """
     models_dir = "../models"
     
-    if not os.path.exists(models_dir):
-        return {"models": [], "message": "No models directory found"}
+    # Always include 'random' as option
+    model_names = ["random"]
     
-    # Finde alle Checkpoint-Ordner
-    checkpoints = glob.glob(f"{models_dir}/checkpoint_*")
-    model_names = [os.path.basename(cp) for cp in checkpoints]
+    if os.path.exists(models_dir):
+        # Finde alle Checkpoint-Ordner
+        checkpoints = glob.glob(f"{models_dir}/checkpoint_*")
+        trained_models = [os.path.basename(cp) for cp in checkpoints]
+        model_names.extend(sorted(trained_models))
     
     return {
-        "models": sorted(model_names),
+        "models": model_names,
         "count": len(model_names)
     }
 
 
 @app.post("/api/simulate")
 def run_simulation(request: SimulationRequest):
-    """Führt Simulation mit trainierter Policy aus.
+    """Führt Simulation mit trainierter Policy oder Random Policy aus.
     
     Args:
         request: SimulationRequest mit Modell-Name und Parametern
@@ -75,18 +77,26 @@ def run_simulation(request: SimulationRequest):
     Returns:
         dict: {"status": "success", "data": {...history...}}
     """
-    model_path = f"../models/{request.model_name}"
-    
-    # Check if model exists
-    if not os.path.exists(model_path):
-        raise HTTPException(
-            status_code=404, 
-            detail=f"Model '{request.model_name}' not found"
-        )
+    # Special case: 'random' means no trained model
+    if request.model_name.lower() == "random":
+        checkpoint_path = None
+        print("Using random policy (no trained model)")
+    else:
+        model_path = f"../models/{request.model_name}"
+        
+        # Check if model exists
+        if not os.path.exists(model_path):
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Model '{request.model_name}' not found. Available models: {list_models()['models']}"
+            )
+        
+        checkpoint_path = model_path
+        print(f"Using trained model: {request.model_name}")
     
     try:
         # Initialize simulation runner
-        runner = SimulationRunner(checkpoint_path=model_path)
+        runner = SimulationRunner(checkpoint_path=checkpoint_path)
         
         # Prepare start parameters
         start_params = {}
