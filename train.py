@@ -16,7 +16,7 @@ def main():
         config = (
             PPOConfig()
             .environment(env=EconomyEnv, env_config={'n_firms': 2, 'n_households': 10})
-            .framework('torch')
+            .framework('tf2')  # TensorFlow 2.x (stabiler auf Windows als PyTorch)
             .rollouts(num_rollout_workers=1)
             .training(
                 train_batch_size=4000,
@@ -46,6 +46,7 @@ def main():
         
         print("Starting training...")
         print(f"Environment: 2 Firms, 10 Households")
+        print(f"Framework: TensorFlow 2.x")
         print("-" * 50)
         
         # Training loop
