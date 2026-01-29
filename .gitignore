@@ -37,6 +37,7 @@ venv.bak/
 *.swo
 *~
 .DS_Store
+.vs/
 
 # Ray/RLlib
 ~/ray_results/
