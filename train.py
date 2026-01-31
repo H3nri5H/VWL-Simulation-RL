@@ -2,6 +2,7 @@ import os
 import json
 import warnings
 import argparse
+import shutil
 from pathlib import Path
 from ray.rllib.algorithms.ppo import PPOConfig
 from env.economy_env import SimpleEconomyEnv
@@ -15,6 +16,23 @@ def train(iterations=50, checkpoint_freq=10):
         'n_households': 10,
         'max_steps': 100,
     }
+    
+    # Use absolute paths
+    checkpoint_dir = os.path.abspath("./checkpoints")
+    metrics_dir = os.path.abspath("./metrics")
+    
+    # Clear old data from previous training runs
+    print("Clearing old training data...")
+    if os.path.exists(checkpoint_dir):
+        shutil.rmtree(checkpoint_dir)
+        print(f"  ✓ Removed old checkpoints")
+    if os.path.exists(metrics_dir):
+        shutil.rmtree(metrics_dir)
+        print(f"  ✓ Removed old metrics")
+    
+    # Create fresh directories
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    os.makedirs(metrics_dir, exist_ok=True)
     
     config = (
         PPOConfig()
@@ -56,19 +74,11 @@ def train(iterations=50, checkpoint_freq=10):
         )
     )
     
-    print(f"Training: {iterations} iterations")
+    print(f"\nStarting new training: {iterations} iterations")
     print(f"Firms: {env_config['n_firms']}, Households: {env_config['n_households']}")
+    print(f"Checkpoint frequency: every {checkpoint_freq} iterations\n")
     
     algo = config.build()
-    
-    # Use absolute paths
-    checkpoint_dir = os.path.abspath("./checkpoints")
-    metrics_dir = os.path.abspath("./metrics")
-    os.makedirs(checkpoint_dir, exist_ok=True)
-    os.makedirs(metrics_dir, exist_ok=True)
-    
-    print(f"\nCheckpoint directory: {checkpoint_dir}")
-    print(f"Metrics directory: {metrics_dir}\n")
     
     for i in range(iterations):
         result = algo.train()
