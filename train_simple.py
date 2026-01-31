@@ -66,7 +66,7 @@ def train(iterations=100, checkpoint_freq=10):
         )
         .training(
             train_batch_size=400,
-            sgd_minibatch_size=128,
+            minibatch_size=128,  # Updated from sgd_minibatch_size
             num_sgd_iter=10,
             lr=3e-4,
             gamma=0.99,
