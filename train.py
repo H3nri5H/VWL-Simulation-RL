@@ -2,6 +2,7 @@ import os
 import json
 import warnings
 import argparse
+from pathlib import Path
 from ray.rllib.algorithms.ppo import PPOConfig
 from env.economy_env import SimpleEconomyEnv
 
@@ -93,31 +94,39 @@ def train(iterations=50, checkpoint_freq=10):
         # Only save full checkpoints at specified intervals
         if (i + 1) % checkpoint_freq == 0 or (i + 1) == iterations:
             # Save checkpoint
-            checkpoint_path = algo.save(checkpoint_dir)
+            checkpoint_result = algo.save(checkpoint_dir)
             
-            # Extract the actual path from the result
-            if hasattr(checkpoint_path, 'checkpoint'):
-                actual_path = checkpoint_path.checkpoint.path
+            # Extract the actual checkpoint directory path
+            if hasattr(checkpoint_result, 'checkpoint'):
+                checkpoint_path = checkpoint_result.checkpoint.path
             else:
-                actual_path = checkpoint_path
+                checkpoint_path = checkpoint_result
             
-            print(f"\n✓ Checkpoint saved: {actual_path}")
+            print(f"\n✓ Checkpoint saved: {checkpoint_path}")
             
-            # Save metadata in the checkpoint directory
-            metadata_file = os.path.join(actual_path, "metadata.json")
-            is_final = (i + 1) == iterations
-            
-            with open(metadata_file, 'w') as f:
-                json.dump({
-                    'iteration': i + 1,
-                    'reward_mean': reward_mean,
-                    'episode_len_mean': episode_len,
-                    'timestamp': result.get('timestamp', 0),
-                    'is_favorite': is_final
-                }, f)
-            
-            if is_final:
-                print(f"⭐ Marked as favorite checkpoint\n")
+            # Find the most recently created checkpoint directory
+            checkpoint_base = Path(checkpoint_dir)
+            checkpoint_dirs = [d for d in checkpoint_base.iterdir() if d.is_dir()]
+            if checkpoint_dirs:
+                latest_checkpoint = max(checkpoint_dirs, key=lambda p: p.stat().st_mtime)
+                
+                # Save metadata in the checkpoint directory
+                metadata_file = latest_checkpoint / "metadata.json"
+                is_final = (i + 1) == iterations
+                
+                with open(metadata_file, 'w') as f:
+                    json.dump({
+                        'iteration': i + 1,
+                        'reward_mean': reward_mean,
+                        'episode_len_mean': episode_len,
+                        'timestamp': result.get('timestamp', 0),
+                        'is_favorite': is_final
+                    }, f)
+                
+                print(f"  Metadata saved: {metadata_file}")
+                
+                if is_final:
+                    print(f"⭐ Marked as favorite checkpoint\n")
     
     print(f"\n✅ Training complete!")
     print(f"Checkpoints saved in: {os.path.abspath(checkpoint_dir)}")
