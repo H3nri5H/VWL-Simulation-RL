@@ -43,8 +43,8 @@ def get_training_config(args):
         )
         .training(
             train_batch_size=4000,
-            sgd_minibatch_size=128,
-            num_sgd_iter=10,
+            minibatch_size=128,  # Correct name for Ray 2.53
+            num_epochs=10,  # Correct name for Ray 2.53
             lr=args.learning_rate,
             gamma=0.99,
             lambda_=0.95,
