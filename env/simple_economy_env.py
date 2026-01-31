@@ -17,8 +17,6 @@ class SimpleEconomyEnv(MultiAgentEnv):
         Args:
             config: Dict with n_firms, n_households, max_steps
         """
-        super().__init__()
-        
         if config is None:
             config = {}
         
@@ -26,25 +24,18 @@ class SimpleEconomyEnv(MultiAgentEnv):
         self.n_households = config.get('n_households', 10)
         self.max_steps = config.get('max_steps', 100)
         
-        # Agent IDs (required by new API)
+        # Agent IDs (required by new API - must be set BEFORE super().__init__())
         self._agent_ids = [f"firm_{i}" for i in range(self.n_firms)]
-        self._possible_agents = self._agent_ids.copy()
+        self.possible_agents = self._agent_ids.copy()
+        
+        # Call parent init (will set self.agents from self._agent_ids)
+        super().__init__()
         
         # Spaces (same for all agents)
         self._obs_space = Box(low=0.0, high=1000.0, shape=(7,), dtype=np.float32)
         self._action_space = MultiDiscrete([5, 5])
         
         self.reset()
-    
-    @property
-    def agents(self):
-        """List of active agent IDs (required by Ray 2.40)."""
-        return self._agent_ids
-    
-    @property
-    def possible_agents(self):
-        """List of all possible agent IDs (required by Ray 2.40)."""
-        return self._possible_agents
     
     def observation_space(self, agent_id):
         """Return observation space for a specific agent."""
