@@ -22,14 +22,14 @@ def train(iterations=50, checkpoint_freq=10):
             env_config=env_config,
         )
         .framework("torch")
-        .rollouts(
-            num_rollout_workers=2,
+        .env_runners(
+            num_env_runners=2,
             rollout_fragment_length=200,
         )
         .training(
             train_batch_size=400,
-            sgd_minibatch_size=128,
-            num_sgd_iter=10,
+            minibatch_size=128,
+            num_epochs=10,
             lr=3e-4,
             gamma=0.99,
             lambda_=0.95,
