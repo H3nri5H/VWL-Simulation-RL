@@ -1,7 +1,10 @@
 import os
+import warnings
 import argparse
 from ray.rllib.algorithms.ppo import PPOConfig
 from env.economy_env import SimpleEconomyEnv
+
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 
 def train(iterations=50, checkpoint_freq=10):
