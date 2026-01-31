@@ -61,10 +61,14 @@ def train(iterations=50, checkpoint_freq=10):
     
     algo = config.build()
     
-    checkpoint_dir = "./checkpoints"
-    metrics_dir = "./metrics"
+    # Use absolute paths
+    checkpoint_dir = os.path.abspath("./checkpoints")
+    metrics_dir = os.path.abspath("./metrics")
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(metrics_dir, exist_ok=True)
+    
+    print(f"\nCheckpoint directory: {checkpoint_dir}")
+    print(f"Metrics directory: {metrics_dir}\n")
     
     for i in range(iterations):
         result = algo.train()
@@ -75,43 +79,40 @@ def train(iterations=50, checkpoint_freq=10):
         
         print(f"[{i+1}/{iterations}] Reward: {reward_mean:.2f}, Length: {episode_len:.0f}")
         
-        # Save metrics for dashboard every iteration (lightweight)
-        iteration_dir = os.path.join(metrics_dir, f"iteration_{i+1}")
-        os.makedirs(iteration_dir, exist_ok=True)
+        # Only save metrics at checkpoint intervals (not every iteration)
+        should_checkpoint = (i + 1) % checkpoint_freq == 0 or (i + 1) == iterations
         
-        result_file = os.path.join(iteration_dir, "result.json")
-        with open(result_file, 'w') as f:
-            json.dump({
-                'training_iteration': i + 1,
-                'env_runners': {
-                    'episode_reward_mean': reward_mean,
-                    'episode_reward_min': env_runners.get('episode_reward_min', 0.0),
-                    'episode_reward_max': env_runners.get('episode_reward_max', 0.0),
-                    'episode_len_mean': episode_len,
-                }
-            }, f)
-        
-        # Only save full checkpoints at specified intervals
-        if (i + 1) % checkpoint_freq == 0 or (i + 1) == iterations:
-            # Save checkpoint
+        if should_checkpoint:
+            # Save metrics
+            iteration_dir = os.path.join(metrics_dir, f"iteration_{i+1}")
+            os.makedirs(iteration_dir, exist_ok=True)
+            
+            result_file = os.path.join(iteration_dir, "result.json")
+            with open(result_file, 'w') as f:
+                json.dump({
+                    'training_iteration': i + 1,
+                    'env_runners': {
+                        'episode_reward_mean': reward_mean,
+                        'episode_reward_min': env_runners.get('episode_reward_min', 0.0),
+                        'episode_reward_max': env_runners.get('episode_reward_max', 0.0),
+                        'episode_len_mean': episode_len,
+                    }
+                }, f)
+            
+            # Save full checkpoint
             checkpoint_result = algo.save(checkpoint_dir)
             
-            # Extract the actual checkpoint directory path
+            # Get actual checkpoint path
             if hasattr(checkpoint_result, 'checkpoint'):
                 checkpoint_path = checkpoint_result.checkpoint.path
             else:
-                checkpoint_path = checkpoint_result
+                checkpoint_path = str(checkpoint_result)
             
-            print(f"\n✓ Checkpoint saved: {checkpoint_path}")
+            print(f"\n✓ Checkpoint saved to: {checkpoint_path}")
             
-            # Find the most recently created checkpoint directory
-            checkpoint_base = Path(checkpoint_dir)
-            checkpoint_dirs = [d for d in checkpoint_base.iterdir() if d.is_dir()]
-            if checkpoint_dirs:
-                latest_checkpoint = max(checkpoint_dirs, key=lambda p: p.stat().st_mtime)
-                
-                # Save metadata in the checkpoint directory
-                metadata_file = latest_checkpoint / "metadata.json"
+            # Verify checkpoint exists and save metadata
+            if os.path.exists(checkpoint_path) and os.path.isdir(checkpoint_path):
+                metadata_file = os.path.join(checkpoint_path, "metadata.json")
                 is_final = (i + 1) == iterations
                 
                 with open(metadata_file, 'w') as f:
@@ -120,16 +121,43 @@ def train(iterations=50, checkpoint_freq=10):
                         'reward_mean': reward_mean,
                         'episode_len_mean': episode_len,
                         'timestamp': result.get('timestamp', 0),
-                        'is_favorite': is_final
+                        'is_favorite': is_final,
+                        'checkpoint_path': checkpoint_path
                     }, f)
                 
-                print(f"  Metadata saved: {metadata_file}")
+                print(f"  ✓ Metadata saved: {metadata_file}")
                 
                 if is_final:
-                    print(f"⭐ Marked as favorite checkpoint\n")
+                    print(f"  ⭐ Marked as favorite\n")
+            else:
+                print(f"  ⚠️ Warning: Checkpoint directory not found at {checkpoint_path}")
+                # Try to find it in the checkpoint base directory
+                checkpoint_base = Path(checkpoint_dir)
+                checkpoint_dirs = sorted([d for d in checkpoint_base.iterdir() if d.is_dir()], 
+                                       key=lambda p: p.stat().st_mtime, reverse=True)
+                if checkpoint_dirs:
+                    actual_path = checkpoint_dirs[0]
+                    print(f"  Found checkpoint at: {actual_path}")
+                    metadata_file = actual_path / "metadata.json"
+                    is_final = (i + 1) == iterations
+                    
+                    with open(metadata_file, 'w') as f:
+                        json.dump({
+                            'iteration': i + 1,
+                            'reward_mean': reward_mean,
+                            'episode_len_mean': episode_len,
+                            'timestamp': result.get('timestamp', 0),
+                            'is_favorite': is_final,
+                            'checkpoint_path': str(actual_path)
+                        }, f)
+                    print(f"  ✓ Metadata saved: {metadata_file}")
     
     print(f"\n✅ Training complete!")
-    print(f"Checkpoints saved in: {os.path.abspath(checkpoint_dir)}")
+    print(f"\nAll checkpoints saved in: {checkpoint_dir}")
+    print(f"\nCheckpoint contents:")
+    for item in Path(checkpoint_dir).iterdir():
+        if item.is_dir():
+            print(f"  - {item.name}")
     
     algo.stop()
 

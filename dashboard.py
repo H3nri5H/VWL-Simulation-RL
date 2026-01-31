@@ -58,83 +58,81 @@ with tab1:
         
         return history
     
-    placeholder = st.empty()
-    
     if 'auto_refresh' not in st.session_state:
-        st.session_state.auto_refresh = True
+        st.session_state.auto_refresh = False  # Disabled by default
     
     col_left, col_right = st.columns([3, 1])
     with col_right:
-        if st.button("⏸️ Pause" if st.session_state.auto_refresh else "▶️ Resume"):
+        if st.button("⏸️ Pause" if st.session_state.auto_refresh else "▶️ Auto-Refresh"):
             st.session_state.auto_refresh = not st.session_state.auto_refresh
+            st.rerun()
     
-    while st.session_state.auto_refresh:
-        history = load_training_history()
+    history = load_training_history()
+    
+    if not history:
+        st.warning("No training data found. Start training with: `python train.py`")
+    else:
+        df = pd.DataFrame(history)
+        latest = history[-1]
         
-        with placeholder.container():
-            if not history:
-                st.warning("No training data found. Start training with: `python train.py`")
-            else:
-                df = pd.DataFrame(history)
-                latest = history[-1]
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric("Iteration", latest['iteration'])
-                with col2:
-                    st.metric("Reward Mean", f"{latest['reward_mean']:.2f}")
-                with col3:
-                    st.metric("Episode Length", f"{latest['episode_len']:.0f}")
-                
-                st.subheader("Episode Reward")
-                fig_reward = go.Figure()
-                fig_reward.add_trace(go.Scatter(
-                    x=df['iteration'],
-                    y=df['reward_mean'],
-                    mode='lines',
-                    name='Mean',
-                    line=dict(color='#82ca9d', width=3)
-                ))
-                fig_reward.add_trace(go.Scatter(
-                    x=df['iteration'],
-                    y=df['reward_max'],
-                    mode='lines',
-                    name='Max',
-                    line=dict(color='#8884d8', width=1)
-                ))
-                fig_reward.add_trace(go.Scatter(
-                    x=df['iteration'],
-                    y=df['reward_min'],
-                    mode='lines',
-                    name='Min',
-                    line=dict(color='#ffc658', width=1)
-                ))
-                fig_reward.update_layout(
-                    template='plotly_dark',
-                    height=400,
-                    xaxis_title='Iteration',
-                    yaxis_title='Reward'
-                )
-                st.plotly_chart(fig_reward, use_container_width=True)
-                
-                st.subheader("Episode Length")
-                fig_len = go.Figure()
-                fig_len.add_trace(go.Scatter(
-                    x=df['iteration'],
-                    y=df['episode_len'],
-                    mode='lines',
-                    name='Length',
-                    line=dict(color='#82ca9d', width=3)
-                ))
-                fig_len.update_layout(
-                    template='plotly_dark',
-                    height=400,
-                    xaxis_title='Iteration',
-                    yaxis_title='Steps'
-                )
-                st.plotly_chart(fig_len, use_container_width=True)
+        col1, col2, col3 = st.columns(3)
         
+        with col1:
+            st.metric("Iteration", latest['iteration'])
+        with col2:
+            st.metric("Reward Mean", f"{latest['reward_mean']:.2f}")
+        with col3:
+            st.metric("Episode Length", f"{latest['episode_len']:.0f}")
+        
+        st.subheader("Episode Reward")
+        fig_reward = go.Figure()
+        fig_reward.add_trace(go.Scatter(
+            x=df['iteration'],
+            y=df['reward_mean'],
+            mode='lines+markers',
+            name='Mean',
+            line=dict(color='#82ca9d', width=3)
+        ))
+        fig_reward.add_trace(go.Scatter(
+            x=df['iteration'],
+            y=df['reward_max'],
+            mode='lines',
+            name='Max',
+            line=dict(color='#8884d8', width=1)
+        ))
+        fig_reward.add_trace(go.Scatter(
+            x=df['iteration'],
+            y=df['reward_min'],
+            mode='lines',
+            name='Min',
+            line=dict(color='#ffc658', width=1)
+        ))
+        fig_reward.update_layout(
+            template='plotly_dark',
+            height=400,
+            xaxis_title='Iteration',
+            yaxis_title='Reward'
+        )
+        st.plotly_chart(fig_reward, width='stretch')
+        
+        st.subheader("Episode Length")
+        fig_len = go.Figure()
+        fig_len.add_trace(go.Scatter(
+            x=df['iteration'],
+            y=df['episode_len'],
+            mode='lines+markers',
+            name='Length',
+            line=dict(color='#82ca9d', width=3)
+        ))
+        fig_len.update_layout(
+            template='plotly_dark',
+            height=400,
+            xaxis_title='Iteration',
+            yaxis_title='Steps'
+        )
+        st.plotly_chart(fig_len, width='stretch')
+    
+    if st.session_state.auto_refresh:
         time.sleep(2)
         st.rerun()
 
@@ -151,20 +149,24 @@ with tab2:
             if cp_dir.is_dir():
                 metadata_file = cp_dir / "metadata.json"
                 if metadata_file.exists():
-                    with open(metadata_file) as f:
-                        metadata = json.load(f)
-                    checkpoints.append({
-                        'path': str(cp_dir),
-                        'name': cp_dir.name,
-                        'iteration': metadata.get('iteration', 0),
-                        'reward': metadata.get('reward_mean', 0),
-                        'is_favorite': metadata.get('is_favorite', False)
-                    })
+                    try:
+                        with open(metadata_file) as f:
+                            metadata = json.load(f)
+                        checkpoints.append({
+                            'path': str(cp_dir),
+                            'name': cp_dir.name,
+                            'iteration': metadata.get('iteration', 0),
+                            'reward': metadata.get('reward_mean', 0),
+                            'is_favorite': metadata.get('is_favorite', False)
+                        })
+                    except:
+                        pass
     
     checkpoints.sort(key=lambda x: x['iteration'], reverse=True)
     
     if not checkpoints:
         st.warning("No checkpoints found. Train a model first with: `python train.py`")
+        st.info(f"Looking for checkpoints in: {checkpoint_dir.absolute()}")
     else:
         st.subheader("Select Checkpoint")
         
@@ -228,7 +230,6 @@ with tab2:
                 })
         
         if st.button("🚀 Start Simulation", type="primary"):
-            # Store simulation config in session state
             st.session_state.simulation_config = {
                 'checkpoint_path': selected_checkpoint['path'],
                 'n_firms': n_firms,
@@ -238,7 +239,7 @@ with tab2:
                 'firm_configs': firm_configs
             }
             st.session_state.simulation_running = True
-            st.success("Simulation configured! Run simulation code to start.")
+            st.success("Simulation configured!")
             st.info("Note: Full simulation runner will be implemented next.")
 
 # Tab 3: Firms
