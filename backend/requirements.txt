@@ -1,9 +1,2 @@
-# Backend API Requirements
-fastapi>=0.109.0
-uvicorn[standard]>=0.27.0
-pydantic>=2.0.0
-python-multipart>=0.0.6
-
-# Ray RLlib (optional - only needed if loading trained models)
-# ray[rllib]>=2.10.0
-# tensorflow
+fastapi==0.104.1
+uvicorn==0.24.0
