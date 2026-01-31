@@ -25,22 +25,28 @@ class EconomyEnv(AECEnv):
     
     metadata = {'render_modes': ['human'], 'name': 'economy_v0'}
     
-    def __init__(self, n_firms=2, n_households=10, max_steps=100):
+    def __init__(self, config=None):
         """Initialize Economy Environment.
         
         Args:
-            n_firms: Anzahl lernender Firmen-Agents
-            n_households: Anzahl regelbasierter Haushalte
-            max_steps: Maximale Anzahl Steps pro Episode (z.B. 100 Quartale = 25 Jahre)
+            config: Dictionary or EnvContext with:
+                - n_firms: Anzahl lernender Firmen-Agents (default: 2)
+                - n_households: Anzahl regelbasierter Haushalte (default: 10)
+                - max_steps: Maximale Anzahl Steps pro Episode (default: 100)
         """
         super().__init__()
         
-        self.n_firms = n_firms
-        self.n_households = n_households
-        self.max_steps = max_steps
+        # Handle both dict and EnvContext (Ray passes EnvContext)
+        if config is None:
+            config = {}
+        
+        # Extract parameters from config
+        self.n_firms = config.get('n_firms', 2) if hasattr(config, 'get') else getattr(config, 'n_firms', 2)
+        self.n_households = config.get('n_households', 10) if hasattr(config, 'get') else getattr(config, 'n_households', 10)
+        self.max_steps = config.get('max_steps', 100) if hasattr(config, 'get') else getattr(config, 'max_steps', 100)
         
         # Agent-Namen
-        self.possible_agents = [f"firm_{i}" for i in range(n_firms)]
+        self.possible_agents = [f"firm_{i}" for i in range(self.n_firms)]
         self.agents = self.possible_agents[:]
         
         # Observation Space: [eigener_preis, eigener_lohn, nachfrage, inventory, profit, markt_avg_preis, markt_avg_lohn]
