@@ -70,17 +70,19 @@ def run_simulation(checkpoint_path, n_firms, n_households, n_steps):
         # Step environment
         obs, rewards, dones, truncated, info = env.step(actions)
         
-        # Record firm data
-        for i, firm in enumerate(env.firms):
-            firm_data[i]['prices'].append(firm.price)
-            firm_data[i]['wages'].append(firm.wage)
-            firm_data[i]['profits'].append(firm.profit)
-            firm_data[i]['employees'].append(len(firm.employees))
+        # Record firm data (env.firms is a dict with keys 'firm_0', 'firm_1', ...)
+        for i in range(n_firms):
+            firm_id = f"firm_{i}"
+            firm = env.firms[firm_id]
+            firm_data[i]['prices'].append(firm['price'])
+            firm_data[i]['wages'].append(firm['wage'])
+            firm_data[i]['profits'].append(firm['profit'])
+            firm_data[i]['employees'].append(firm['employees'])
         
-        # Record household data
+        # Record household data (env.households is a list of dicts)
         for i, hh in enumerate(env.households):
-            household_data[i]['money'].append(hh.money)
-            household_data[i]['employed'].append(1 if hh.employed else 0)
+            household_data[i]['money'].append(hh['money'])
+            household_data[i]['employed'].append(1 if hh['employer'] is not None else 0)
         
         done = dones.get('__all__', False)
         step += 1
