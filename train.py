@@ -6,11 +6,24 @@ Households use rule-based behavior (not trained).
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.env import PettingZooEnv
 from ray import tune
 from env.economy_env import EconomyEnv
 import os
 import argparse
 from datetime import datetime
+
+
+def env_creator(config):
+    """Create wrapped PettingZoo environment for RLlib.
+    
+    Args:
+        config: Environment configuration dict
+        
+    Returns:
+        PettingZooEnv: Wrapped environment compatible with RLlib
+    """
+    return PettingZooEnv(EconomyEnv(config))
 
 
 def get_training_config(args):
@@ -22,6 +35,15 @@ def get_training_config(args):
     Returns:
         PPOConfig: Configured PPO algorithm
     """
+    # Create dummy env to get observation/action spaces
+    dummy_env = env_creator({
+        'n_firms': args.n_firms,
+        'n_households': args.n_households,
+    })
+    
+    obs_space = dummy_env.observation_space
+    act_space = dummy_env.action_space
+    
     config = (
         PPOConfig()
         .api_stack(
@@ -30,7 +52,7 @@ def get_training_config(args):
             enable_env_runner_and_connector_v2=False,
         )
         .environment(
-            env=EconomyEnv,
+            env=env_creator,
             env_config={
                 'n_firms': args.n_firms,
                 'n_households': args.n_households,
@@ -43,8 +65,8 @@ def get_training_config(args):
         )
         .training(
             train_batch_size=4000,
-            minibatch_size=128,  # Correct name for Ray 2.53
-            num_epochs=10,  # Correct name for Ray 2.53
+            minibatch_size=128,
+            num_epochs=10,
             lr=args.learning_rate,
             gamma=0.99,
             lambda_=0.95,
@@ -56,8 +78,8 @@ def get_training_config(args):
             policies={
                 'firm_policy': (
                     None,  # Use default PPO policy
-                    EconomyEnv().observation_spaces['firm_0'],
-                    EconomyEnv().action_spaces['firm_0'],
+                    obs_space,
+                    act_space,
                     {}
                 )
             },
