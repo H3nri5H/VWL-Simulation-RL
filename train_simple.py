@@ -2,7 +2,6 @@
 
 import os
 import argparse
-from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from env.simple_economy_env import SimpleEconomyEnv
@@ -15,7 +14,6 @@ class RLlibMultiAgentEnv(MultiAgentEnv):
         super().__init__()
         self.env = SimpleEconomyEnv(config)
         self._agent_ids = self.env._agent_ids
-        # For legacy API: expose as attributes
         self.observation_space = self.env._obs_space
         self.action_space = self.env._action_space
     
@@ -51,28 +49,23 @@ def train(iterations=100, checkpoint_freq=10):
     
     # Create sample env to get spaces
     sample_env = SimpleEconomyEnv(env_config)
-    agent_id = list(sample_env._agent_ids)[0]
     
-    # RLlib configuration - DISABLE new API stack for compatibility
+    # RLlib configuration for Ray 2.6.1
     config = (
         PPOConfig()
-        .api_stack(
-            enable_rl_module_and_learner=False,
-            enable_env_runner_and_connector_v2=False,
-        )
         .environment(
             env=RLlibMultiAgentEnv,
             env_config=env_config,
         )
         .framework("torch")
-        .rollouts(  # Legacy API uses .rollouts()
+        .rollouts(
             num_rollout_workers=2,
             rollout_fragment_length=200,
         )
         .training(
             train_batch_size=400,
-            sgd_minibatch_size=128,  # Legacy API parameter name
-            num_sgd_iter=10,  # Legacy API parameter name
+            sgd_minibatch_size=128,
+            num_sgd_iter=10,
             lr=3e-4,
             gamma=0.99,
             lambda_=0.95,
@@ -97,7 +90,6 @@ def train(iterations=100, checkpoint_freq=10):
     print(f"\nTraining Config:")
     print(f"  - Algorithm: PPO (Proximal Policy Optimization)")
     print(f"  - Framework: PyTorch")
-    print(f"  - API Stack: Legacy (for compatibility)")
     print(f"  - Workers: 2")
     print(f"  - Learning Rate: 0.0003")
     print(f"  - Total Iterations: {iterations}")
@@ -117,7 +109,7 @@ def train(iterations=100, checkpoint_freq=10):
     for i in range(iterations):
         result = algo.train()
         
-        # Print progress (legacy API result structure)
+        # Print progress
         print(f"Iteration {i+1}/{iterations}:")
         print(f"  Reward: {result.get('episode_reward_mean', 0.0):.2f} "
               f"(min: {result.get('episode_reward_min', 0.0):.2f}, "
