@@ -32,14 +32,14 @@ def get_training_config(args):
             }
         )
         .framework('tf2')  # TensorFlow 2.x (better Windows compatibility)
-        .env_runners(  # Updated from .rollouts()
+        .env_runners(
             num_env_runners=args.num_workers,
             rollout_fragment_length=200,
         )
         .training(
             train_batch_size=4000,
-            sgd_minibatch_size=128,
-            num_sgd_iter=10,
+            minibatch_size=128,  # Updated from sgd_minibatch_size
+            num_epochs=10,  # Updated from num_sgd_iter
             lr=args.learning_rate,
             gamma=0.99,
             lambda_=0.95,
@@ -109,7 +109,7 @@ def train(args):
             # Train one iteration
             result = algo.train()
             
-            # Extract metrics
+            # Extract metrics (try multiple possible locations)
             reward_mean = result.get('env_runners', {}).get('episode_reward_mean', 
                          result.get('episode_reward_mean', 0))
             reward_min = result.get('env_runners', {}).get('episode_reward_min',
