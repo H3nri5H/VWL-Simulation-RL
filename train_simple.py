@@ -15,8 +15,14 @@ class RLlibMultiAgentEnv(MultiAgentEnv):
         super().__init__()
         self.env = SimpleEconomyEnv(config)
         self._agent_ids = self.env._agent_ids
-        self.observation_space = self.env.observation_space
-        self.action_space = self.env.action_space
+    
+    def observation_space(self, agent_id):
+        """Return observation space for a specific agent."""
+        return self.env.observation_space(agent_id)
+    
+    def action_space(self, agent_id):
+        """Return action space for a specific agent."""
+        return self.env.action_space(agent_id)
     
     def reset(self, *, seed=None, options=None):
         return self.env.reset(seed=seed, options=options)
@@ -48,9 +54,9 @@ def train(iterations=100, checkpoint_freq=10):
     print(f"  - Households: {env_config['n_households']}")
     print(f"  - Max Steps: {env_config['max_steps']}")
     
-    # Create sample env to get agent IDs
+    # Create sample env to get spaces
     sample_env = SimpleEconomyEnv(env_config)
-    agent_ids = list(sample_env._agent_ids)
+    agent_id = list(sample_env._agent_ids)[0]
     
     # RLlib configuration (updated for Ray 2.x API)
     config = (
@@ -67,7 +73,7 @@ def train(iterations=100, checkpoint_freq=10):
         .training(
             train_batch_size=400,
             minibatch_size=128,  # Updated from sgd_minibatch_size
-            num_sgd_iter=10,
+            num_epochs=10,  # Updated from num_sgd_iter
             lr=3e-4,
             gamma=0.99,
             lambda_=0.95,
@@ -77,8 +83,8 @@ def train(iterations=100, checkpoint_freq=10):
             policies={
                 "firm_policy": (
                     None,  # Use default policy
-                    sample_env.observation_space,
-                    sample_env.action_space,
+                    sample_env.observation_space(agent_id),
+                    sample_env.action_space(agent_id),
                     {},
                 )
             },
@@ -120,7 +126,7 @@ def train(iterations=100, checkpoint_freq=10):
         # Save checkpoint
         if (i + 1) % checkpoint_freq == 0:
             checkpoint_path = algo.save(checkpoint_dir)
-            print(f"  ✓ Checkpoint saved: {checkpoint_path}")
+            print(f"  \u2713 Checkpoint saved: {checkpoint_path}")
         
         print()
     
