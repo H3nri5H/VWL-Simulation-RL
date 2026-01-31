@@ -52,7 +52,7 @@ def train(iterations=100, checkpoint_freq=10):
     sample_env = SimpleEconomyEnv(env_config)
     agent_ids = list(sample_env._agent_ids)
     
-    # RLlib configuration
+    # RLlib configuration (updated for Ray 2.x API)
     config = (
         PPOConfig()
         .environment(
@@ -60,8 +60,8 @@ def train(iterations=100, checkpoint_freq=10):
             env_config=env_config,
         )
         .framework("torch")
-        .rollouts(
-            num_rollout_workers=2,
+        .env_runners(  # Updated from .rollouts()
+            num_env_runners=2,
             rollout_fragment_length=200,
         )
         .training(
@@ -112,14 +112,15 @@ def train(iterations=100, checkpoint_freq=10):
         
         # Print progress
         print(f"Iteration {i+1}/{iterations}:")
-        print(f"  Reward: {result['episode_reward_mean']:.2f} "
-              f"(min: {result['episode_reward_min']:.2f}, max: {result['episode_reward_max']:.2f})")
-        print(f"  Episode Length: {result['episode_len_mean']:.1f}")
+        print(f"  Reward: {result['env_runners']['episode_reward_mean']:.2f} "
+              f"(min: {result['env_runners']['episode_reward_min']:.2f}, "
+              f"max: {result['env_runners']['episode_reward_max']:.2f})")
+        print(f"  Episode Length: {result['env_runners']['episode_len_mean']:.1f}")
         
         # Save checkpoint
         if (i + 1) % checkpoint_freq == 0:
             checkpoint_path = algo.save(checkpoint_dir)
-            print(f"  \u2713 Checkpoint saved: {checkpoint_path}")
+            print(f"  ✓ Checkpoint saved: {checkpoint_path}")
         
         print()
     
