@@ -1,4 +1,5 @@
 import os
+import json
 import warnings
 import argparse
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -70,6 +71,22 @@ def train(iterations=50, checkpoint_freq=10):
         episode_len = env_runners.get('episode_len_mean', 0.0)
         
         print(f"[{i+1}/{iterations}] Reward: {reward_mean:.2f}, Length: {episode_len:.0f}")
+        
+        # Save metrics for dashboard every iteration
+        iteration_dir = os.path.join(checkpoint_dir, f"iteration_{i+1}")
+        os.makedirs(iteration_dir, exist_ok=True)
+        
+        result_file = os.path.join(iteration_dir, "result.json")
+        with open(result_file, 'w') as f:
+            json.dump({
+                'training_iteration': i + 1,
+                'env_runners': {
+                    'episode_reward_mean': reward_mean,
+                    'episode_reward_min': env_runners.get('episode_reward_min', 0.0),
+                    'episode_reward_max': env_runners.get('episode_reward_max', 0.0),
+                    'episode_len_mean': episode_len,
+                }
+            }, f)
         
         if (i + 1) % checkpoint_freq == 0:
             checkpoint_path = algo.save(checkpoint_dir)
