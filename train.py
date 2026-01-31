@@ -32,8 +32,8 @@ def get_training_config(args):
             }
         )
         .framework('tf2')  # TensorFlow 2.x (better Windows compatibility)
-        .rollouts(
-            num_rollout_workers=args.num_workers,
+        .env_runners(  # Updated from .rollouts()
+            num_env_runners=args.num_workers,
             rollout_fragment_length=200,
         )
         .training(
@@ -110,10 +110,14 @@ def train(args):
             result = algo.train()
             
             # Extract metrics
-            reward_mean = result.get('episode_reward_mean', 0)
-            reward_min = result.get('episode_reward_min', 0)
-            reward_max = result.get('episode_reward_max', 0)
-            episode_len = result.get('episode_len_mean', 0)
+            reward_mean = result.get('env_runners', {}).get('episode_reward_mean', 
+                         result.get('episode_reward_mean', 0))
+            reward_min = result.get('env_runners', {}).get('episode_reward_min',
+                        result.get('episode_reward_min', 0))
+            reward_max = result.get('env_runners', {}).get('episode_reward_max',
+                        result.get('episode_reward_max', 0))
+            episode_len = result.get('env_runners', {}).get('episode_len_mean',
+                         result.get('episode_len_mean', 0))
             
             # Print progress
             print(f"  Reward: {reward_mean:.2f} (min: {reward_min:.2f}, max: {reward_max:.2f})")
