@@ -91,38 +91,38 @@ def train(iterations=50, checkpoint_freq=10):
             }, f)
         
         # Only save full checkpoints at specified intervals
-        if (i + 1) % checkpoint_freq == 0:
-            checkpoint_result = algo.save(checkpoint_dir)
-            checkpoint_path = checkpoint_result.checkpoint.path
-            print(f"Checkpoint saved: {checkpoint_path}")
+        if (i + 1) % checkpoint_freq == 0 or (i + 1) == iterations:
+            # Save checkpoint
+            checkpoint_path = algo.save(checkpoint_dir)
             
-            # Save metadata
-            metadata_file = os.path.join(checkpoint_path, "metadata.json")
+            # Extract the actual path from the result
+            if hasattr(checkpoint_path, 'checkpoint'):
+                actual_path = checkpoint_path.checkpoint.path
+            else:
+                actual_path = checkpoint_path
+            
+            print(f"\n✓ Checkpoint saved: {actual_path}")
+            
+            # Save metadata in the checkpoint directory
+            metadata_file = os.path.join(actual_path, "metadata.json")
+            is_final = (i + 1) == iterations
+            
             with open(metadata_file, 'w') as f:
                 json.dump({
                     'iteration': i + 1,
                     'reward_mean': reward_mean,
+                    'episode_len_mean': episode_len,
                     'timestamp': result.get('timestamp', 0),
-                    'is_favorite': False
+                    'is_favorite': is_final
                 }, f)
+            
+            if is_final:
+                print(f"⭐ Marked as favorite checkpoint\n")
     
-    # Save final checkpoint and mark as favorite
-    final_result = algo.save(checkpoint_dir)
-    final_checkpoint = final_result.checkpoint.path
-    print(f"\nTraining complete: {final_checkpoint}")
-    
-    # Mark final checkpoint as favorite
-    metadata_file = os.path.join(final_checkpoint, "metadata.json")
-    with open(metadata_file, 'w') as f:
-        json.dump({
-            'iteration': iterations,
-            'reward_mean': reward_mean,
-            'timestamp': result.get('timestamp', 0),
-            'is_favorite': True
-        }, f)
+    print(f"\n✅ Training complete!")
+    print(f"Checkpoints saved in: {os.path.abspath(checkpoint_dir)}")
     
     algo.stop()
-    return final_checkpoint
 
 
 if __name__ == "__main__":
