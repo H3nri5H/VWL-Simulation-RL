@@ -15,7 +15,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         
         self._agent_ids = set(f"firm_{i}" for i in range(self.n_firms))
         
-        self._obs_space = Box(low=-100.0, high=100.0, shape=(6,), dtype=np.float32)
+        self._obs_space = Box(low=-1000.0, high=1000.0, shape=(6,), dtype=np.float32)
         self._action_space = Discrete(5)
         
         self.reset()
@@ -91,10 +91,12 @@ class SimpleEconomyEnv(MultiAgentEnv):
         other_prices = [self.firms[aid]['price'] for aid in self._agent_ids if aid != agent_id]
         avg_other_price = np.mean(other_prices) if other_prices else firm['price']
         
+        capital_norm = np.clip(firm['capital'] / 1000.0, -100.0, 100.0)
+        
         return np.array([
             firm['price'],
             firm['profit'],
-            firm['capital'] / 1000.0,
+            capital_norm,
             avg_other_price,
             self.timestep / self.max_steps,
             len(self.households),
