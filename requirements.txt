@@ -1,9 +1,7 @@
-# Python 3.11.9 Compatible Stack
-# Ray 2.40.0+ has official Python 3.11 support
 ray[rllib]==2.40.0
-gymnasium==1.0.0
-numpy>=1.24.0,<2.0.0
-torch>=2.0.0,<2.6.0
-pandas>=2.0.0
-matplotlib>=3.7.0
-pettingzoo>=1.24.0
+torch==2.5.1
+gymnasium==0.29.1
+numpy<2.0.0
+streamlit==1.31.0
+plotly==5.18.0
+pandas==2.1.4
