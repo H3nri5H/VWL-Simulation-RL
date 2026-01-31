@@ -1,5 +1,3 @@
-"""Environment package for VWL-Simulation-RL."""
+from env.economy_env import SimpleEconomyEnv
 
-from env.economy_env import EconomyEnv
-
-__all__ = ['EconomyEnv']
+__all__ = ['SimpleEconomyEnv']
