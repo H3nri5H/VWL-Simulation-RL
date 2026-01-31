@@ -35,6 +35,9 @@ def get_training_config(args):
     Returns:
         PPOConfig: Configured PPO algorithm
     """
+    # Register environment
+    tune.register_env("economy_env", env_creator)
+    
     # Create dummy env to get observation/action spaces
     dummy_env = env_creator({
         'n_firms': args.n_firms,
@@ -52,7 +55,7 @@ def get_training_config(args):
             enable_env_runner_and_connector_v2=False,
         )
         .environment(
-            env=env_creator,
+            env="economy_env",  # Use registered env name
             env_config={
                 'n_firms': args.n_firms,
                 'n_households': args.n_households,
