@@ -1,0 +1,65 @@
+.App {
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+header {
+  margin-bottom: 2rem;
+}
+
+header h1 {
+  font-size: 2.5rem;
+  color: #82ca9d;
+  text-align: center;
+}
+
+.loading {
+  text-align: center;
+  padding: 4rem;
+  font-size: 1.5rem;
+  color: #8884d8;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 3rem;
+}
+
+.stat-card {
+  background: #1a1f3a;
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 1px solid #2a3f5f;
+}
+
+.stat-label {
+  color: #8884d8;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #82ca9d;
+}
+
+.charts {
+  display: grid;
+  gap: 2rem;
+}
+
+.chart-container {
+  background: #1a1f3a;
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 1px solid #2a3f5f;
+}
+
+.chart-container h2 {
+  margin-bottom: 1rem;
+  color: #8884d8;
+  font-size: 1.2rem;
+}
