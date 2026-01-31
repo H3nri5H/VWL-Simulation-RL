@@ -24,6 +24,11 @@ def get_training_config(args):
     """
     config = (
         PPOConfig()
+        .api_stack(
+            # Disable new API stack for TensorFlow 2 compatibility (Ray 2.53+)
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
         .environment(
             env=EconomyEnv,
             env_config={
@@ -32,14 +37,14 @@ def get_training_config(args):
             }
         )
         .framework('tf2')  # TensorFlow 2.x (better Windows compatibility)
-        .env_runners(
-            num_env_runners=args.num_workers,
+        .rollouts(  # Using old API (rollouts instead of env_runners)
+            num_rollout_workers=args.num_workers,
             rollout_fragment_length=200,
         )
         .training(
             train_batch_size=4000,
-            minibatch_size=128,  # Updated from sgd_minibatch_size
-            num_epochs=10,  # Updated from num_sgd_iter
+            sgd_minibatch_size=128,  # Old API parameter name
+            num_sgd_iter=10,  # Old API parameter name
             lr=args.learning_rate,
             gamma=0.99,
             lambda_=0.95,
@@ -87,6 +92,7 @@ def train(args):
         print(f"\nTraining Config:")
         print(f"  - Algorithm: PPO (Proximal Policy Optimization)")
         print(f"  - Framework: TensorFlow 2.x")
+        print(f"  - API Stack: Old (stable, tf2-compatible)")
         print(f"  - Learning Rate: {args.learning_rate}")
         print(f"  - Workers: {args.num_workers}")
         print(f"  - Total Iterations: {args.iterations}")
@@ -109,15 +115,11 @@ def train(args):
             # Train one iteration
             result = algo.train()
             
-            # Extract metrics (try multiple possible locations)
-            reward_mean = result.get('env_runners', {}).get('episode_reward_mean', 
-                         result.get('episode_reward_mean', 0))
-            reward_min = result.get('env_runners', {}).get('episode_reward_min',
-                        result.get('episode_reward_min', 0))
-            reward_max = result.get('env_runners', {}).get('episode_reward_max',
-                        result.get('episode_reward_max', 0))
-            episode_len = result.get('env_runners', {}).get('episode_len_mean',
-                         result.get('episode_len_mean', 0))
+            # Extract metrics (old API format)
+            reward_mean = result.get('episode_reward_mean', 0)
+            reward_min = result.get('episode_reward_min', 0)
+            reward_max = result.get('episode_reward_max', 0)
+            episode_len = result.get('episode_len_mean', 0)
             
             # Print progress
             print(f"  Reward: {reward_mean:.2f} (min: {reward_min:.2f}, max: {reward_max:.2f})")
@@ -131,12 +133,12 @@ def train(args):
             # Save checkpoint periodically
             if iteration % args.checkpoint_freq == 0:
                 checkpoint_path = algo.save()
-                print(f"  ✅ Checkpoint saved: {checkpoint_path}")
+                print(f"  \u2705 Checkpoint saved: {checkpoint_path}")
                 
                 # Track best model
                 if reward_mean > best_reward:
                     best_reward = reward_mean
-                    print(f"  🏆 New best reward: {best_reward:.2f}")
+                    print(f"  \ud83c\udfc6 New best reward: {best_reward:.2f}")
         
         print("\n" + "="*60)
         print("Training Complete!")
@@ -161,16 +163,16 @@ def train(args):
                 shutil.rmtree(dest_path)
             shutil.copytree(final_checkpoint, dest_path)
             
-            print(f"\n✅ Checkpoint copied to: {dest_path}")
+            print(f"\n\u2705 Checkpoint copied to: {dest_path}")
             print(f"   You can now use this in the dashboard!")
         except Exception as e:
-            print(f"\n⚠️  Could not copy to models/: {e}")
+            print(f"\n\u26a0\ufe0f  Could not copy to models/: {e}")
             print(f"   Manual copy: cp -r {final_checkpoint} models/")
         
         algo.stop()
         
     except Exception as e:
-        print(f"\n❌ Training failed: {e}")
+        print(f"\n\u274c Training failed: {e}")
         import traceback
         traceback.print_exc()
         raise
