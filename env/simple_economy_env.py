@@ -1,14 +1,14 @@
-"""Simple Gymnasium-based Economy Environment for RLlib MultiAgent."""
+"""Simple Gymnasium-based Economy Environment for RLlib MultiAgent (Ray 2.40+)."""
 
 import numpy as np
-from gymnasium.spaces import Box, MultiDiscrete, Dict as DictSpace
+from gymnasium.spaces import Box, MultiDiscrete
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
-class SimpleEconomyEnv:
-    """Simple Multi-Agent Economy Environment (RLlib compatible).
+class SimpleEconomyEnv(MultiAgentEnv):
+    """Simple Multi-Agent Economy Environment (Ray 2.40 compatible).
     
-    This is a simplified version that bypasses PettingZoo entirely
-    and uses RLlib's MultiAgentEnv interface directly.
+    This environment is fully compatible with Ray 2.40's new API stack.
     """
     
     def __init__(self, config=None):
@@ -17,6 +17,8 @@ class SimpleEconomyEnv:
         Args:
             config: Dict with n_firms, n_households, max_steps
         """
+        super().__init__()
+        
         if config is None:
             config = {}
         
@@ -24,14 +26,25 @@ class SimpleEconomyEnv:
         self.n_households = config.get('n_households', 10)
         self.max_steps = config.get('max_steps', 100)
         
-        # Agent IDs
-        self._agent_ids = {f"firm_{i}" for i in range(self.n_firms)}
+        # Agent IDs (required by new API)
+        self._agent_ids = [f"firm_{i}" for i in range(self.n_firms)]
+        self._possible_agents = self._agent_ids.copy()
         
-        # Single observation/action space (same for all agents)
+        # Spaces (same for all agents)
         self._obs_space = Box(low=0.0, high=1000.0, shape=(7,), dtype=np.float32)
         self._action_space = MultiDiscrete([5, 5])
         
         self.reset()
+    
+    @property
+    def agents(self):
+        """List of active agent IDs (required by Ray 2.40)."""
+        return self._agent_ids
+    
+    @property
+    def possible_agents(self):
+        """List of all possible agent IDs (required by Ray 2.40)."""
+        return self._possible_agents
     
     def observation_space(self, agent_id):
         """Return observation space for a specific agent."""
