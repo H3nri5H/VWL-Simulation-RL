@@ -109,65 +109,91 @@ def train(iterations=50, checkpoint_freq=10):
                     }
                 }, f)
             
+            print(f"\n=== SAVING CHECKPOINT ===")
+            print(f"Target directory: {checkpoint_dir}")
+            
             # Save full checkpoint
             checkpoint_result = algo.save(checkpoint_dir)
             
-            # Get actual checkpoint path
+            print(f"\nCheckpoint result type: {type(checkpoint_result)}")
+            print(f"Checkpoint result value: {checkpoint_result}")
+            print(f"Checkpoint result dir: {dir(checkpoint_result)}")
+            
+            # Get actual checkpoint path - try multiple methods
+            checkpoint_path = None
+            
             if hasattr(checkpoint_result, 'checkpoint'):
+                print(f"Has .checkpoint attribute")
                 checkpoint_path = checkpoint_result.checkpoint.path
+            elif hasattr(checkpoint_result, 'path'):
+                print(f"Has .path attribute")
+                checkpoint_path = checkpoint_result.path
+            elif isinstance(checkpoint_result, (str, os.PathLike)):
+                print(f"Is string/PathLike")
+                checkpoint_path = str(checkpoint_result)
             else:
+                print(f"Unknown type, converting to string")
                 checkpoint_path = str(checkpoint_result)
             
-            print(f"\n✓ Checkpoint saved to: {checkpoint_path}")
+            print(f"\nExtracted checkpoint path: {checkpoint_path}")
+            print(f"Path exists: {os.path.exists(checkpoint_path)}")
+            print(f"Path is dir: {os.path.isdir(checkpoint_path) if os.path.exists(checkpoint_path) else 'N/A'}")
             
-            # Verify checkpoint exists and save metadata
-            if os.path.exists(checkpoint_path) and os.path.isdir(checkpoint_path):
+            # List all directories in checkpoint_dir
+            print(f"\nAll items in {checkpoint_dir}:")
+            if os.path.exists(checkpoint_dir):
+                for item in os.listdir(checkpoint_dir):
+                    item_path = os.path.join(checkpoint_dir, item)
+                    print(f"  - {item} (dir: {os.path.isdir(item_path)})")
+            
+            # Try to find ANY checkpoint directory
+            checkpoint_base = Path(checkpoint_dir)
+            if checkpoint_base.exists():
+                checkpoint_dirs = [d for d in checkpoint_base.iterdir() if d.is_dir()]
+                print(f"\nFound {len(checkpoint_dirs)} directories in checkpoint folder")
+                
+                if checkpoint_dirs:
+                    # Use most recent
+                    actual_path = max(checkpoint_dirs, key=lambda p: p.stat().st_mtime)
+                    checkpoint_path = str(actual_path)
+                    print(f"Using most recent: {checkpoint_path}")
+            
+            # Save metadata
+            if checkpoint_path and os.path.exists(checkpoint_path) and os.path.isdir(checkpoint_path):
                 metadata_file = os.path.join(checkpoint_path, "metadata.json")
                 is_final = (i + 1) == iterations
                 
-                with open(metadata_file, 'w') as f:
-                    json.dump({
-                        'iteration': i + 1,
-                        'reward_mean': reward_mean,
-                        'episode_len_mean': episode_len,
-                        'timestamp': result.get('timestamp', 0),
-                        'is_favorite': is_final,
-                        'checkpoint_path': checkpoint_path
-                    }, f)
+                metadata = {
+                    'iteration': i + 1,
+                    'reward_mean': reward_mean,
+                    'episode_len_mean': episode_len,
+                    'timestamp': result.get('timestamp', 0),
+                    'is_favorite': is_final,
+                    'checkpoint_path': checkpoint_path
+                }
                 
-                print(f"  ✓ Metadata saved: {metadata_file}")
+                with open(metadata_file, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                
+                print(f"\n✓ Metadata saved: {metadata_file}")
+                print(f"Metadata content: {metadata}")
                 
                 if is_final:
-                    print(f"  ⭐ Marked as favorite\n")
+                    print(f"⭐ Marked as favorite\n")
             else:
-                print(f"  ⚠️ Warning: Checkpoint directory not found at {checkpoint_path}")
-                # Try to find it in the checkpoint base directory
-                checkpoint_base = Path(checkpoint_dir)
-                checkpoint_dirs = sorted([d for d in checkpoint_base.iterdir() if d.is_dir()], 
-                                       key=lambda p: p.stat().st_mtime, reverse=True)
-                if checkpoint_dirs:
-                    actual_path = checkpoint_dirs[0]
-                    print(f"  Found checkpoint at: {actual_path}")
-                    metadata_file = actual_path / "metadata.json"
-                    is_final = (i + 1) == iterations
-                    
-                    with open(metadata_file, 'w') as f:
-                        json.dump({
-                            'iteration': i + 1,
-                            'reward_mean': reward_mean,
-                            'episode_len_mean': episode_len,
-                            'timestamp': result.get('timestamp', 0),
-                            'is_favorite': is_final,
-                            'checkpoint_path': str(actual_path)
-                        }, f)
-                    print(f"  ✓ Metadata saved: {metadata_file}")
+                print(f"\n⚠️ Could not save metadata - invalid checkpoint path")
+            
+            print("=" * 50 + "\n")
     
     print(f"\n✅ Training complete!")
-    print(f"\nAll checkpoints saved in: {checkpoint_dir}")
-    print(f"\nCheckpoint contents:")
-    for item in Path(checkpoint_dir).iterdir():
-        if item.is_dir():
-            print(f"  - {item.name}")
+    print(f"\nFinal checkpoint directory listing:")
+    if os.path.exists(checkpoint_dir):
+        for item in Path(checkpoint_dir).iterdir():
+            if item.is_dir():
+                print(f"  - {item.name}")
+                metadata_file = item / "metadata.json"
+                if metadata_file.exists():
+                    print(f"    ✓ Has metadata.json")
     
     algo.stop()
 
