@@ -65,8 +65,9 @@ def train(iterations=50, checkpoint_freq=10):
     for i in range(iterations):
         result = algo.train()
         
-        reward_mean = result.get('episode_reward_mean', 0.0)
-        episode_len = result.get('episode_len_mean', 0.0)
+        env_runners = result.get('env_runners', {})
+        reward_mean = env_runners.get('episode_reward_mean', 0.0)
+        episode_len = env_runners.get('episode_len_mean', 0.0)
         
         print(f"[{i+1}/{iterations}] Reward: {reward_mean:.2f}, Length: {episode_len:.0f}")
         
