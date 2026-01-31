@@ -61,7 +61,9 @@ def train(iterations=50, checkpoint_freq=10):
     algo = config.build()
     
     checkpoint_dir = "./checkpoints"
+    metrics_dir = "./metrics"
     os.makedirs(checkpoint_dir, exist_ok=True)
+    os.makedirs(metrics_dir, exist_ok=True)
     
     for i in range(iterations):
         result = algo.train()
@@ -72,8 +74,8 @@ def train(iterations=50, checkpoint_freq=10):
         
         print(f"[{i+1}/{iterations}] Reward: {reward_mean:.2f}, Length: {episode_len:.0f}")
         
-        # Save metrics for dashboard every iteration
-        iteration_dir = os.path.join(checkpoint_dir, f"iteration_{i+1}")
+        # Save metrics for dashboard every iteration (lightweight)
+        iteration_dir = os.path.join(metrics_dir, f"iteration_{i+1}")
         os.makedirs(iteration_dir, exist_ok=True)
         
         result_file = os.path.join(iteration_dir, "result.json")
@@ -88,12 +90,36 @@ def train(iterations=50, checkpoint_freq=10):
                 }
             }, f)
         
+        # Only save full checkpoints at specified intervals
         if (i + 1) % checkpoint_freq == 0:
-            checkpoint_path = algo.save(checkpoint_dir)
-            print(f"Checkpoint: {checkpoint_path}")
+            checkpoint_result = algo.save(checkpoint_dir)
+            checkpoint_path = checkpoint_result.checkpoint.path
+            print(f"Checkpoint saved: {checkpoint_path}")
+            
+            # Save metadata
+            metadata_file = os.path.join(checkpoint_path, "metadata.json")
+            with open(metadata_file, 'w') as f:
+                json.dump({
+                    'iteration': i + 1,
+                    'reward_mean': reward_mean,
+                    'timestamp': result.get('timestamp', 0),
+                    'is_favorite': False
+                }, f)
     
-    final_checkpoint = algo.save(checkpoint_dir)
+    # Save final checkpoint and mark as favorite
+    final_result = algo.save(checkpoint_dir)
+    final_checkpoint = final_result.checkpoint.path
     print(f"\nTraining complete: {final_checkpoint}")
+    
+    # Mark final checkpoint as favorite
+    metadata_file = os.path.join(final_checkpoint, "metadata.json")
+    with open(metadata_file, 'w') as f:
+        json.dump({
+            'iteration': iterations,
+            'reward_mean': reward_mean,
+            'timestamp': result.get('timestamp', 0),
+            'is_favorite': True
+        }, f)
     
     algo.stop()
     return final_checkpoint
