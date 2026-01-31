@@ -1,70 +1,230 @@
-"""Training script for VWL-Simulation-RL."""
+"""Training script for VWL-Simulation Multi-Agent RL.
+
+Trains 2 firms using PPO with shared policy (Parameter Sharing).
+Households use rule-based behavior (not trained).
+"""
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray import tune
 from env.economy_env import EconomyEnv
+import os
+import argparse
+from datetime import datetime
 
 
-def main():
-    """Main training function."""
+def get_training_config(args):
+    """Create PPO training configuration.
     
+    Args:
+        args: Command line arguments
+        
+    Returns:
+        PPOConfig: Configured PPO algorithm
+    """
+    config = (
+        PPOConfig()
+        .environment(
+            env=EconomyEnv,
+            env_config={
+                'n_firms': args.n_firms,
+                'n_households': args.n_households,
+            }
+        )
+        .framework('tf2')  # TensorFlow 2.x (better Windows compatibility)
+        .rollouts(
+            num_rollout_workers=args.num_workers,
+            rollout_fragment_length=200,
+        )
+        .training(
+            train_batch_size=4000,
+            sgd_minibatch_size=128,
+            num_sgd_iter=10,
+            lr=args.learning_rate,
+            gamma=0.99,
+            lambda_=0.95,
+            clip_param=0.2,
+            vf_clip_param=10.0,
+            entropy_coeff=0.01,  # Encourage exploration
+        )
+        .multi_agent(
+            policies={
+                'firm_policy': (
+                    None,  # Use default PPO policy
+                    EconomyEnv().observation_spaces['firm_0'],
+                    EconomyEnv().action_spaces['firm_0'],
+                    {}
+                )
+            },
+            policy_mapping_fn=lambda agent_id, *args, **kwargs: 'firm_policy',
+        )
+        .resources(num_gpus=0)  # CPU only (Windows compatibility)
+        .debugging(log_level='INFO')
+    )
+    
+    return config
+
+
+def train(args):
+    """Main training loop.
+    
+    Args:
+        args: Command line arguments
+    """
     # Initialize Ray
-    ray.init(ignore_reinit_error=True)
+    ray.init(
+        ignore_reinit_error=True,
+        num_cpus=args.num_workers + 1,  # Workers + trainer
+    )
     
     try:
-        # Configure PPO for Multi-Agent Training
-        config = (
-            PPOConfig()
-            .environment(env=EconomyEnv, env_config={'n_firms': 2, 'n_households': 10})
-            .framework('tf2')  # TensorFlow 2.x (stabiler auf Windows als PyTorch)
-            .rollouts(num_rollout_workers=1)
-            .training(
-                train_batch_size=4000,
-                sgd_minibatch_size=128,
-                num_sgd_iter=10,
-                lr=3e-4,
-                gamma=0.99,
-                lambda_=0.95,
-                clip_param=0.2,
-            )
-            .multi_agent(
-                policies={
-                    'firm_policy': (
-                        None,  # Use default policy class
-                        EconomyEnv().observation_spaces['firm_0'],
-                        EconomyEnv().action_spaces['firm_0'],
-                        {}
-                    )
-                },
-                policy_mapping_fn=lambda agent_id, *args, **kwargs: 'firm_policy',
-            )
-            .resources(num_gpus=0)
-        )
+        print("="*60)
+        print("VWL-Simulation Multi-Agent RL Training")
+        print("="*60)
+        print(f"Environment Config:")
+        print(f"  - Firms: {args.n_firms}")
+        print(f"  - Households: {args.n_households}")
+        print(f"\nTraining Config:")
+        print(f"  - Algorithm: PPO (Proximal Policy Optimization)")
+        print(f"  - Framework: TensorFlow 2.x")
+        print(f"  - Learning Rate: {args.learning_rate}")
+        print(f"  - Workers: {args.num_workers}")
+        print(f"  - Total Iterations: {args.iterations}")
+        print(f"  - Checkpoint Every: {args.checkpoint_freq} iterations")
+        print("="*60)
+        print()
+        
+        # Build config
+        config = get_training_config(args)
         
         # Build algorithm
         algo = config.build()
         
-        print("Starting training...")
-        print(f"Environment: 2 Firms, 10 Households")
-        print(f"Framework: TensorFlow 2.x")
-        print("-" * 50)
-        
         # Training loop
-        for i in range(10):  # 10 iterations for testing
+        best_reward = float('-inf')
+        
+        for iteration in range(1, args.iterations + 1):
+            print(f"\n[Iteration {iteration}/{args.iterations}]")
+            
+            # Train one iteration
             result = algo.train()
-            print(f"Iteration {i+1}: reward_mean={result['episode_reward_mean']:.2f}")
+            
+            # Extract metrics
+            reward_mean = result.get('episode_reward_mean', 0)
+            reward_min = result.get('episode_reward_min', 0)
+            reward_max = result.get('episode_reward_max', 0)
+            episode_len = result.get('episode_len_mean', 0)
+            
+            # Print progress
+            print(f"  Reward: {reward_mean:.2f} (min: {reward_min:.2f}, max: {reward_max:.2f})")
+            print(f"  Episode Length: {episode_len:.1f}")
+            
+            # Policy-specific metrics (if available)
+            if 'policy_reward_mean' in result:
+                for policy_id, policy_reward in result['policy_reward_mean'].items():
+                    print(f"  {policy_id} reward: {policy_reward:.2f}")
+            
+            # Save checkpoint periodically
+            if iteration % args.checkpoint_freq == 0:
+                checkpoint_path = algo.save()
+                print(f"  ✅ Checkpoint saved: {checkpoint_path}")
+                
+                # Track best model
+                if reward_mean > best_reward:
+                    best_reward = reward_mean
+                    print(f"  🏆 New best reward: {best_reward:.2f}")
         
-        print("-" * 50)
-        print("Training completed!")
+        print("\n" + "="*60)
+        print("Training Complete!")
+        print("="*60)
         
-        # Save checkpoint
-        checkpoint_path = algo.save()
-        print(f"Checkpoint saved to: {checkpoint_path}")
+        # Final checkpoint
+        final_checkpoint = algo.save()
+        print(f"Final checkpoint saved: {final_checkpoint}")
+        print(f"Best reward achieved: {best_reward:.2f}")
+        
+        # Copy to models/ directory for easy access
+        try:
+            import shutil
+            models_dir = "models"
+            os.makedirs(models_dir, exist_ok=True)
+            
+            # Extract checkpoint folder name
+            checkpoint_name = os.path.basename(final_checkpoint)
+            dest_path = os.path.join(models_dir, checkpoint_name)
+            
+            if os.path.exists(dest_path):
+                shutil.rmtree(dest_path)
+            shutil.copytree(final_checkpoint, dest_path)
+            
+            print(f"\n✅ Checkpoint copied to: {dest_path}")
+            print(f"   You can now use this in the dashboard!")
+        except Exception as e:
+            print(f"\n⚠️  Could not copy to models/: {e}")
+            print(f"   Manual copy: cp -r {final_checkpoint} models/")
         
         algo.stop()
         
+    except Exception as e:
+        print(f"\n❌ Training failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+    
     finally:
         ray.shutdown()
+
+
+def main():
+    """Parse arguments and start training."""
+    parser = argparse.ArgumentParser(
+        description='Train Multi-Agent RL for VWL-Simulation'
+    )
+    
+    # Environment parameters
+    parser.add_argument(
+        '--n-firms',
+        type=int,
+        default=2,
+        help='Number of firms (default: 2)'
+    )
+    parser.add_argument(
+        '--n-households',
+        type=int,
+        default=10,
+        help='Number of households (default: 10)'
+    )
+    
+    # Training parameters
+    parser.add_argument(
+        '--iterations',
+        type=int,
+        default=100,
+        help='Number of training iterations (default: 100)'
+    )
+    parser.add_argument(
+        '--learning-rate',
+        type=float,
+        default=3e-4,
+        help='Learning rate (default: 0.0003)'
+    )
+    parser.add_argument(
+        '--num-workers',
+        type=int,
+        default=2,
+        help='Number of rollout workers (default: 2)'
+    )
+    parser.add_argument(
+        '--checkpoint-freq',
+        type=int,
+        default=10,
+        help='Save checkpoint every N iterations (default: 10)'
+    )
+    
+    args = parser.parse_args()
+    
+    # Start training
+    train(args)
 
 
 if __name__ == '__main__':
