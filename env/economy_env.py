@@ -3,7 +3,7 @@
 import numpy as np
 from gymnasium.spaces import Box, MultiDiscrete
 from pettingzoo import AECEnv
-from pettingzoo.utils import agent_selector
+from pettingzoo.utils.agent_selector import agent_selector
 
 
 class EconomyEnv(AECEnv):
