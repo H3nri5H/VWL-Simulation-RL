@@ -4,6 +4,12 @@ import pandas as pd
 import plotly.graph_objects as go
 from pathlib import Path
 import time
+import sys
+
+# Add project root to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
+from simulate import run_simulation
 
 st.set_page_config(
     page_title="VWL Simulation Dashboard",
@@ -21,6 +27,14 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "👥 Households", 
     "📊 Summary"
 ])
+
+# Helper function to load simulation results
+def load_simulation_results():
+    results_file = Path("./simulation_results/latest_simulation.json")
+    if results_file.exists():
+        with open(results_file) as f:
+            return json.load(f)
+    return None
 
 # Tab 1: Training Metrics
 with tab1:
@@ -59,7 +73,7 @@ with tab1:
         return history
     
     if 'auto_refresh' not in st.session_state:
-        st.session_state.auto_refresh = False  # Disabled by default
+        st.session_state.auto_refresh = False
     
     col_left, col_right = st.columns([3, 1])
     with col_right:
@@ -136,11 +150,10 @@ with tab1:
         time.sleep(2)
         st.rerun()
 
-# Tab 2: Simulation Setup
+# Tab 2: Simulation Setup  
 with tab2:
     st.header("Simulation Setup")
     
-    # Load available checkpoints
     checkpoint_dir = Path("./checkpoints")
     checkpoints = []
     
@@ -166,11 +179,9 @@ with tab2:
     
     if not checkpoints:
         st.warning("No checkpoints found. Train a model first with: `python train.py`")
-        st.info(f"Looking for checkpoints in: {checkpoint_dir.absolute()}")
     else:
         st.subheader("Select Checkpoint")
         
-        # Find favorite checkpoint
         favorite_idx = next((i for i, cp in enumerate(checkpoints) if cp['is_favorite']), 0)
         
         checkpoint_options = [
@@ -186,7 +197,6 @@ with tab2:
         )
         
         selected_checkpoint = checkpoints[selected_idx]
-        
         st.success(f"Selected: {selected_checkpoint['name']}")
         
         st.subheader("Simulation Parameters")
@@ -230,41 +240,184 @@ with tab2:
                 })
         
         if st.button("🚀 Start Simulation", type="primary"):
-            st.session_state.simulation_config = {
-                'checkpoint_path': selected_checkpoint['path'],
-                'n_firms': n_firms,
-                'n_households': n_households,
-                'n_steps': n_steps,
-                'step_label': step_label,
-                'firm_configs': firm_configs
-            }
-            st.session_state.simulation_running = True
-            st.success("Simulation configured!")
-            st.info("Note: Full simulation runner will be implemented next.")
+            with st.spinner("Running simulation..."):
+                config = {
+                    'checkpoint_path': selected_checkpoint['path'],
+                    'n_firms': n_firms,
+                    'n_households': n_households,
+                    'n_steps': n_steps,
+                    'step_label': step_label,
+                    'firm_configs': firm_configs
+                }
+                
+                try:
+                    results = run_simulation(config)
+                    st.session_state.simulation_results = results
+                    st.session_state.simulation_complete = True
+                    st.success("✅ Simulation complete! Check other tabs for results.")
+                except Exception as e:
+                    st.error(f"Error running simulation: {e}")
 
 # Tab 3: Firms
 with tab3:
     st.header("Firms Overview")
     
-    if 'simulation_running' in st.session_state and st.session_state.simulation_running:
-        st.info("Simulation results will appear here once implemented.")
+    results = load_simulation_results()
+    
+    if results is None:
+        st.info("No simulation results. Run a simulation first.")
     else:
-        st.info("Configure and start a simulation in the 'Simulation Setup' tab.")
+        firm_data = results['firms']
+        n_firms = len(firm_data)
+        
+        # Firm selector
+        firm_names = list(firm_data.keys())
+        selected_firm = st.selectbox("Select Firm", firm_names)
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(firm_data[selected_firm])
+        
+        # Metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Final Price", f"{df['price'].iloc[-1]:.2f}€")
+        with col2:
+            st.metric("Final Wage", f"{df['wage'].iloc[-1]:.2f}€")
+        with col3:
+            st.metric("Avg Profit", f"{df['profit'].mean():.2f}€")
+        with col4:
+            st.metric("Avg Employees", f"{df['employees'].mean():.1f}")
+        
+        # Charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Price & Wage")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df['step'], y=df['price'], name='Price', line=dict(color='#8884d8')))
+            fig.add_trace(go.Scatter(x=df['step'], y=df['wage'], name='Wage', line=dict(color='#82ca9d')))
+            fig.update_layout(template='plotly_dark', height=300)
+            st.plotly_chart(fig, width='stretch')
+        
+        with col2:
+            st.subheader("Profit")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df['step'], y=df['profit'], fill='tozeroy', line=dict(color='#ffc658')))
+            fig.update_layout(template='plotly_dark', height=300)
+            st.plotly_chart(fig, width='stretch')
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Revenue vs Costs")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df['step'], y=df['revenue'], name='Revenue', line=dict(color='#82ca9d')))
+            fig.add_trace(go.Scatter(x=df['step'], y=df['costs'], name='Costs', line=dict(color='#ff6b6b')))
+            fig.update_layout(template='plotly_dark', height=300)
+            st.plotly_chart(fig, width='stretch')
+        
+        with col2:
+            st.subheader("Employees")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df['step'], y=df['employees'], fill='tozeroy', line=dict(color='#8884d8')))
+            fig.update_layout(template='plotly_dark', height=300)
+            st.plotly_chart(fig, width='stretch')
 
 # Tab 4: Households
 with tab4:
     st.header("Households Overview")
     
-    if 'simulation_running' in st.session_state and st.session_state.simulation_running:
-        st.info("Household results will appear here once implemented.")
+    results = load_simulation_results()
+    
+    if results is None:
+        st.info("No simulation results. Run a simulation first.")
     else:
-        st.info("Configure and start a simulation in the 'Simulation Setup' tab.")
+        df = pd.DataFrame(results['households'])
+        
+        # Metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Final Total Money", f"{df['total_money'].iloc[-1]:.2f}€")
+        with col2:
+            st.metric("Avg Employment Rate", f"{(df['employed'].mean() / (df['employed'] + df['unemployed']).iloc[0] * 100):.1f}%")
+        with col3:
+            st.metric("Avg Wage", f"{df['avg_wage'].mean():.2f}€")
+        
+        # Charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Total Money")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df['step'], y=df['total_money'], fill='tozeroy', line=dict(color='#82ca9d')))
+            fig.update_layout(template='plotly_dark', height=350)
+            st.plotly_chart(fig, width='stretch')
+        
+        with col2:
+            st.subheader("Employment")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df['step'], y=df['employed'], name='Employed', line=dict(color='#82ca9d'), fill='tonexty'))
+            fig.add_trace(go.Scatter(x=df['step'], y=df['unemployed'], name='Unemployed', line=dict(color='#ff6b6b'), fill='tozeroy'))
+            fig.update_layout(template='plotly_dark', height=350)
+            st.plotly_chart(fig, width='stretch')
+        
+        st.subheader("Average Wage")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=df['step'], y=df['avg_wage'], line=dict(color='#8884d8')))
+        fig.update_layout(template='plotly_dark', height=300)
+        st.plotly_chart(fig, width='stretch')
 
 # Tab 5: Summary
 with tab5:
     st.header("Summary Statistics")
     
-    if 'simulation_running' in st.session_state and st.session_state.simulation_running:
-        st.info("Summary statistics will appear here once implemented.")
+    results = load_simulation_results()
+    
+    if results is None:
+        st.info("No simulation results. Run a simulation first.")
     else:
-        st.info("Configure and start a simulation in the 'Simulation Setup' tab.")
+        df = pd.DataFrame(results['summary'])
+        
+        # Metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Avg Total Profit", f"{df['total_profit'].mean():.2f}€")
+        with col2:
+            st.metric("Avg Price", f"{df['avg_price'].mean():.2f}€")
+        with col3:
+            st.metric("Avg Employment", f"{df['employment_rate'].mean() * 100:.1f}%")
+        with col4:
+            st.metric("Total Wealth", f"{df['total_money'].iloc[-1]:.2f}€")
+        
+        # Charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Total Profit Over Time")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df['step'], y=df['total_profit'], fill='tozeroy', line=dict(color='#ffc658')))
+            fig.update_layout(template='plotly_dark', height=350)
+            st.plotly_chart(fig, width='stretch')
+        
+        with col2:
+            st.subheader("Average Price")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df['step'], y=df['avg_price'], line=dict(color='#8884d8')))
+            fig.update_layout(template='plotly_dark', height=350)
+            st.plotly_chart(fig, width='stretch')
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Total Money in Economy")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df['step'], y=df['total_money'], fill='tozeroy', line=dict(color='#82ca9d')))
+            fig.update_layout(template='plotly_dark', height=350)
+            st.plotly_chart(fig, width='stretch')
+        
+        with col2:
+            st.subheader("Employment Rate")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df['step'], y=df['employment_rate'] * 100, line=dict(color='#ff6b6b')))
+            fig.update_layout(template='plotly_dark', height=350, yaxis_title="%")
+            st.plotly_chart(fig, width='stretch')
