@@ -66,6 +66,32 @@ class EconomyEnv(AECEnv):
         self._agent_selector = agent_selector(self.agents)
         self._last_rewards = {agent: 0.0 for agent in self.agents}
         
+    def observation_space(self, agent=None):
+        """Return observation space for given agent (required for PettingZoo wrapper).
+        
+        Args:
+            agent: Agent name. If None, uses agent_selection.
+            
+        Returns:
+            Observation space for the agent.
+        """
+        if agent is None:
+            agent = self.agent_selection
+        return self.observation_spaces[agent]
+    
+    def action_space(self, agent=None):
+        """Return action space for given agent (required for PettingZoo wrapper).
+        
+        Args:
+            agent: Agent name. If None, uses agent_selection.
+            
+        Returns:
+            Action space for the agent.
+        """
+        if agent is None:
+            agent = self.agent_selection
+        return self.action_spaces[agent]
+        
     def reset(self, seed=None, options=None):
         """Reset environment (supports both AEC and Parallel API).
         
