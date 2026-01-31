@@ -15,14 +15,9 @@ class RLlibMultiAgentEnv(MultiAgentEnv):
         super().__init__()
         self.env = SimpleEconomyEnv(config)
         self._agent_ids = self.env._agent_ids
-    
-    def observation_space(self, agent_id):
-        """Return observation space for a specific agent."""
-        return self.env.observation_space(agent_id)
-    
-    def action_space(self, agent_id):
-        """Return action space for a specific agent."""
-        return self.env.action_space(agent_id)
+        # For legacy API: expose as attributes
+        self.observation_space = self.env._obs_space
+        self.action_space = self.env._action_space
     
     def reset(self, *, seed=None, options=None):
         return self.env.reset(seed=seed, options=options)
@@ -58,22 +53,26 @@ def train(iterations=100, checkpoint_freq=10):
     sample_env = SimpleEconomyEnv(env_config)
     agent_id = list(sample_env._agent_ids)[0]
     
-    # RLlib configuration (updated for Ray 2.x API)
+    # RLlib configuration - DISABLE new API stack for compatibility
     config = (
         PPOConfig()
+        .api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
         .environment(
             env=RLlibMultiAgentEnv,
             env_config=env_config,
         )
         .framework("torch")
-        .env_runners(  # Updated from .rollouts()
-            num_env_runners=2,
+        .rollouts(  # Legacy API uses .rollouts()
+            num_rollout_workers=2,
             rollout_fragment_length=200,
         )
         .training(
             train_batch_size=400,
-            minibatch_size=128,  # Updated from sgd_minibatch_size
-            num_epochs=10,  # Updated from num_sgd_iter
+            sgd_minibatch_size=128,  # Legacy API parameter name
+            num_sgd_iter=10,  # Legacy API parameter name
             lr=3e-4,
             gamma=0.99,
             lambda_=0.95,
@@ -83,8 +82,8 @@ def train(iterations=100, checkpoint_freq=10):
             policies={
                 "firm_policy": (
                     None,  # Use default policy
-                    sample_env.observation_space(agent_id),
-                    sample_env.action_space(agent_id),
+                    sample_env._obs_space,
+                    sample_env._action_space,
                     {},
                 )
             },
@@ -98,12 +97,14 @@ def train(iterations=100, checkpoint_freq=10):
     print(f"\nTraining Config:")
     print(f"  - Algorithm: PPO (Proximal Policy Optimization)")
     print(f"  - Framework: PyTorch")
+    print(f"  - API Stack: Legacy (for compatibility)")
     print(f"  - Workers: 2")
     print(f"  - Learning Rate: 0.0003")
     print(f"  - Total Iterations: {iterations}")
     print(f"  - Checkpoint Every: {checkpoint_freq} iterations\n")
     
     # Build algorithm
+    print("Building algorithm...\n")
     algo = config.build()
     
     # Create checkpoint directory
@@ -116,12 +117,12 @@ def train(iterations=100, checkpoint_freq=10):
     for i in range(iterations):
         result = algo.train()
         
-        # Print progress
+        # Print progress (legacy API result structure)
         print(f"Iteration {i+1}/{iterations}:")
-        print(f"  Reward: {result['env_runners']['episode_reward_mean']:.2f} "
-              f"(min: {result['env_runners']['episode_reward_min']:.2f}, "
-              f"max: {result['env_runners']['episode_reward_max']:.2f})")
-        print(f"  Episode Length: {result['env_runners']['episode_len_mean']:.1f}")
+        print(f"  Reward: {result.get('episode_reward_mean', 0.0):.2f} "
+              f"(min: {result.get('episode_reward_min', 0.0):.2f}, "
+              f"max: {result.get('episode_reward_max', 0.0):.2f})")
+        print(f"  Episode Length: {result.get('episode_len_mean', 0.0):.1f}")
         
         # Save checkpoint
         if (i + 1) % checkpoint_freq == 0:
