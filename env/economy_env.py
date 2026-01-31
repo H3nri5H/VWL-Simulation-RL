@@ -15,7 +15,8 @@ class SimpleEconomyEnv(MultiAgentEnv):
         
         self._agent_ids = set(f"firm_{i}" for i in range(self.n_firms))
         
-        self._obs_space = Box(low=-1000.0, high=1000.0, shape=(6,), dtype=np.float32)
+        # Observation space: all values normalized to similar scale
+        self._obs_space = Box(low=-100.0, high=100.0, shape=(6,), dtype=np.float32)
         self._action_space = Discrete(5)
         
         self.reset()
@@ -89,13 +90,15 @@ class SimpleEconomyEnv(MultiAgentEnv):
         other_prices = [self.firms[aid]['price'] for aid in self._agent_ids if aid != agent_id]
         avg_other_price = np.mean(other_prices) if other_prices else firm['price']
         
+        # Normalize all values to similar scale
         obs = np.array([
-            firm['price'],
-            firm['profit'],
-            avg_other_price,
-            self.timestep / self.max_steps,
-            len(self.households),
-            0.0,
+            firm['price'],                    # 1-50 range
+            firm['profit'] / 100.0,          # normalized: 0-3 typical
+            avg_other_price,                  # 1-50 range
+            self.timestep / self.max_steps,  # 0-1 range
+            len(self.households),             # constant 10
+            0.0,                              # padding
         ], dtype=np.float32)
         
-        return np.clip(obs, -1000.0, 1000.0)
+        # Safety clip to observation space bounds
+        return np.clip(obs, -100.0, 100.0)
