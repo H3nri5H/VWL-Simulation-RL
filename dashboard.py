@@ -1,11 +1,16 @@
 import os
 import json
+import warnings
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from pathlib import Path
 from ray.rllib.algorithms.ppo import PPO
 from env.economy_env import SimpleEconomyEnv
+
+# Suppress deprecation warnings
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+os.environ['PYTHONWARNINGS'] = 'ignore::DeprecationWarning'
 
 st.set_page_config(page_title="VWL Simulation Dashboard", layout="wide")
 
@@ -166,7 +171,7 @@ with tab1:
                 yaxis_title="Price",
                 height=300
             )
-            st.plotly_chart(fig_price, use_container_width=True)
+            st.plotly_chart(fig_price, width='stretch')
             
             # Profit chart
             fig_profit = go.Figure()
@@ -182,7 +187,7 @@ with tab1:
                 yaxis_title="Profit",
                 height=300
             )
-            st.plotly_chart(fig_profit, use_container_width=True)
+            st.plotly_chart(fig_profit, width='stretch')
         
         with col2:
             # Wage chart
@@ -199,7 +204,7 @@ with tab1:
                 yaxis_title="Wage",
                 height=300
             )
-            st.plotly_chart(fig_wage, use_container_width=True)
+            st.plotly_chart(fig_wage, width='stretch')
             
             # Employees chart
             fig_emp = go.Figure()
@@ -215,7 +220,7 @@ with tab1:
                 yaxis_title="Employees",
                 height=300
             )
-            st.plotly_chart(fig_emp, use_container_width=True)
+            st.plotly_chart(fig_emp, width='stretch')
         
         st.divider()
 
@@ -241,7 +246,7 @@ with tab2:
         yaxis_title="Money",
         height=400
     )
-    st.plotly_chart(fig_money, use_container_width=True)
+    st.plotly_chart(fig_money, width='stretch')
     
     # Employment rate
     employment_rate = [sum(st.session_state['household_data'][i]['employed'][step] 
@@ -262,7 +267,7 @@ with tab2:
         yaxis_title="Employment %",
         height=400
     )
-    st.plotly_chart(fig_emp, use_container_width=True)
+    st.plotly_chart(fig_emp, width='stretch')
 
 with tab3:
     st.header("Economic Summary")
@@ -298,4 +303,4 @@ with tab3:
         yaxis_title="Price",
         height=500
     )
-    st.plotly_chart(fig_all, use_container_width=True)
+    st.plotly_chart(fig_all, width='stretch')
