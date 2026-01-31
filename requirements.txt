@@ -1,26 +1,8 @@
-# Core RL Framework
-# Ray 2.10.0 wegen stabiler RLlib API - neuere Versionen können auch funktionieren
-ray[rllib]>=2.10.0
-
-# Deep Learning Framework (für RLlib Neural Networks)
-# TensorFlow statt PyTorch wegen besserer Windows-Kompatibilität
-tensorflow
-
-# Environment APIs
-gymnasium
-pettingzoo
-
-# Numerics and Data
-numpy
+# Stable versions for Multi-Agent RL
+ray[rllib]==2.6.1
+gymnasium==0.28.1
+torch>=2.0.0
+numpy<2.0.0
 pandas
-
-# PyArrow: WICHTIG - Ray braucht < 21.0.0 wegen PyExtensionType
-pyarrow<21.0.0
-
-# Visualization
 matplotlib
-seaborn
-
-# Utilities
-pyyaml
-tqdm
+pettingzoo>=1.24.0
