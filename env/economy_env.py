@@ -21,6 +21,8 @@ class EconomyEnv(AECEnv):
     - MultiDiscrete([5, 5]):
       - Dimension 0 (Preis): 0=-10%, 1=-5%, 2=0%, 3=+5%, 4=+10%
       - Dimension 1 (Lohn): 0=-10%, 1=-5%, 2=0%, 3=+5%, 4=+10%
+    
+    Supports both AEC API and Parallel API for RLlib compatibility.
     """
     
     metadata = {'render_modes': ['human'], 'name': 'economy_v0'}
@@ -62,9 +64,15 @@ class EconomyEnv(AECEnv):
         }
         
         self._agent_selector = agent_selector(self.agents)
+        self._last_rewards = {agent: 0.0 for agent in self.agents}
         
     def reset(self, seed=None, options=None):
-        """Reset environment to initial state."""
+        """Reset environment (supports both AEC and Parallel API).
+        
+        Returns:
+            - AEC mode: (observation, info) for first agent
+            - Parallel mode: (observations_dict, infos_dict) for all agents
+        """
         if seed is not None:
             np.random.seed(seed)
         
@@ -106,14 +114,41 @@ class EconomyEnv(AECEnv):
         self._action_buffer = {}
         
         self.rewards = {agent: 0.0 for agent in self.agents}
+        self._last_rewards = {agent: 0.0 for agent in self.agents}
         self.terminations = {agent: False for agent in self.agents}
         self.truncations = {agent: False for agent in self.agents}
         self.infos = {agent: {} for agent in self.agents}
         
-        return self.observe(self.agent_selection), self.infos[self.agent_selection]
+        # Check if parallel mode (options contains 'parallel' flag or called from wrapper)
+        is_parallel = options and options.get('parallel', False) if options else False
+        
+        if is_parallel:
+            # Parallel API: return observations and infos for ALL agents
+            observations = {agent: self.observe(agent) for agent in self.agents}
+            infos = {agent: {} for agent in self.agents}
+            return observations, infos
+        else:
+            # AEC API: return observation and info for first agent
+            return self.observe(self.agent_selection), self.infos[self.agent_selection]
     
     def step(self, action):
-        """Execute one step of the environment."""
+        """Execute step (supports both AEC and Parallel API).
+        
+        Args:
+            action: Either single action (AEC) or dict of actions (Parallel)
+            
+        Returns:
+            - AEC mode: None (updates internal state)
+            - Parallel mode: (observations, rewards, terminations, truncations, infos)
+        """
+        # Check if parallel mode (action is dict)
+        if isinstance(action, dict):
+            return self._parallel_step(action)
+        else:
+            return self._aec_step(action)
+    
+    def _aec_step(self, action):
+        """AEC API step: one agent acts at a time."""
         if self.terminations[self.agent_selection] or self.truncations[self.agent_selection]:
             return self._was_dead_step(action)
         
@@ -129,7 +164,46 @@ class EconomyEnv(AECEnv):
         
         # Select next agent
         self.agent_selection = self._agent_selector.next()
+    
+    def _parallel_step(self, actions):
+        """Parallel API step: all agents act simultaneously.
         
+        Args:
+            actions: Dict[agent_id, action] - Actions for all agents
+            
+        Returns:
+            observations: Dict[agent_id, observation]
+            rewards: Dict[agent_id, float]
+            terminations: Dict[agent_id, bool]
+            truncations: Dict[agent_id, bool]
+            infos: Dict[agent_id, dict]
+        """
+        # Store all actions
+        for agent, act in actions.items():
+            self._action_buffer[agent] = act
+        
+        # Execute market step with all actions
+        self._execute_market_step()
+        self._action_buffer = {}  # Reset buffer
+        
+        # Build observations for all agents
+        observations = {
+            agent: self.observe(agent) 
+            for agent in self.agents
+        }
+        
+        # Build rewards (from last market step)
+        rewards = {agent: self._last_rewards[agent] for agent in self.agents}
+        
+        # Terminations and truncations
+        terminations = {agent: self.terminations[agent] for agent in self.agents}
+        truncations = {agent: self.truncations[agent] for agent in self.agents}
+        
+        # Infos - MUST be dict of dicts!
+        infos = {agent: self.infos[agent] for agent in self.agents}
+        
+        return observations, rewards, terminations, truncations, infos
+    
     def _execute_market_step(self):
         """Führt einen kompletten Markt-Step aus: Preise/Löhne anpassen, Haushalte agieren, Rewards berechnen."""
         
@@ -220,6 +294,7 @@ class EconomyEnv(AECEnv):
             # Normalisierter Reward
             normalized_reward = (firm['profit'] - mean_profit) / std_profit
             self.rewards[agent_name] = normalized_reward
+            self._last_rewards[agent_name] = normalized_reward  # Store for parallel API
         
         # 6. State aktualisieren
         self.state['timestep'] += 1
@@ -232,7 +307,7 @@ class EconomyEnv(AECEnv):
             self.terminations = {a: True for a in self.agents}
             self.truncations = {a: True for a in self.agents}
         
-        # 8. Infos
+        # 8. Infos - MUST be dict!
         for agent_name in self.agents:
             self.infos[agent_name] = {
                 'profit': self.firms[agent_name]['profit'],
