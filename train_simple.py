@@ -3,32 +3,7 @@
 import os
 import argparse
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from env.simple_economy_env import SimpleEconomyEnv
-
-
-class RLlibMultiAgentEnv(MultiAgentEnv):
-    """Wrapper to make SimpleEconomyEnv compatible with RLlib's MultiAgentEnv."""
-    
-    def __init__(self, config=None):
-        super().__init__()
-        self.env = SimpleEconomyEnv(config)
-        self._agent_ids = self.env._agent_ids
-        # Expose spaces as properties
-        self._obs_space = self.env._obs_space
-        self._action_space = self.env._action_space
-    
-    def observation_space(self, agent_id):
-        return self._obs_space
-    
-    def action_space(self, agent_id):
-        return self._action_space
-    
-    def reset(self, *, seed=None, options=None):
-        return self.env.reset(seed=seed, options=options)
-    
-    def step(self, action_dict):
-        return self.env.step(action_dict)
 
 
 def train(iterations=100, checkpoint_freq=10):
@@ -62,18 +37,18 @@ def train(iterations=100, checkpoint_freq=10):
     config = (
         PPOConfig()
         .environment(
-            env=RLlibMultiAgentEnv,
+            env=SimpleEconomyEnv,
             env_config=env_config,
         )
         .framework("torch")
-        .env_runners(  # NEW API: was .rollouts() in old versions
+        .env_runners(
             num_env_runners=2,
             rollout_fragment_length=200,
         )
         .training(
             train_batch_size=400,
-            minibatch_size=128,  # NEW API: was sgd_minibatch_size
-            num_epochs=10,        # NEW API: was num_sgd_iter
+            minibatch_size=128,
+            num_epochs=10,
             lr=3e-4,
             gamma=0.99,
             lambda_=0.95,
@@ -83,8 +58,8 @@ def train(iterations=100, checkpoint_freq=10):
             policies={
                 "firm_policy": (
                     None,  # Use default policy
-                    sample_env._obs_space,
-                    sample_env._action_space,
+                    sample_env.observation_space("firm_0"),
+                    sample_env.action_space("firm_0"),
                     {},
                 )
             },
