@@ -125,6 +125,7 @@ class EconomyEnv(AECEnv):
         if is_parallel:
             # Parallel API: return observations and infos for ALL agents
             observations = {agent: self.observe(agent) for agent in self.agents}
+            # CRITICAL FIX: Ensure infos is explicitly a dict of dicts
             infos = {agent: {} for agent in self.agents}
             return observations, infos
         else:
@@ -193,14 +194,22 @@ class EconomyEnv(AECEnv):
         }
         
         # Build rewards (from last market step)
-        rewards = {agent: self._last_rewards[agent] for agent in self.agents}
+        rewards = {agent: self._last_rewards.get(agent, 0.0) for agent in self.agents}
         
         # Terminations and truncations
-        terminations = {agent: self.terminations[agent] for agent in self.agents}
-        truncations = {agent: self.truncations[agent] for agent in self.agents}
+        terminations = {agent: self.terminations.get(agent, False) for agent in self.agents}
+        truncations = {agent: self.truncations.get(agent, False) for agent in self.agents}
         
-        # Infos - MUST be dict of dicts!
-        infos = {agent: self.infos[agent] for agent in self.agents}
+        # CRITICAL FIX: Infos MUST be dict of dicts! 
+        # Explicitly create new dict to ensure proper structure
+        infos = {}
+        for agent in self.agents:
+            # Get info dict for this agent, default to empty dict if not exists
+            agent_info = self.infos.get(agent, {})
+            # Ensure it's a dict (not tuple or other type)
+            if not isinstance(agent_info, dict):
+                agent_info = {}
+            infos[agent] = agent_info
         
         return observations, rewards, terminations, truncations, infos
     
@@ -307,14 +316,16 @@ class EconomyEnv(AECEnv):
             self.terminations = {a: True for a in self.agents}
             self.truncations = {a: True for a in self.agents}
         
-        # 8. Infos - MUST be dict!
+        # 8. Infos - CRITICAL: Must be dict of dicts, not tuple!
+        # Explicitly create new dict structure
+        self.infos = {}
         for agent_name in self.agents:
             self.infos[agent_name] = {
-                'profit': self.firms[agent_name]['profit'],
-                'price': self.firms[agent_name]['price'],
-                'wage': self.firms[agent_name]['wage'],
-                'inventory': self.firms[agent_name]['inventory'],
-                'timestep': self.state['timestep'],
+                'profit': float(self.firms[agent_name]['profit']),
+                'price': float(self.firms[agent_name]['price']),
+                'wage': float(self.firms[agent_name]['wage']),
+                'inventory': float(self.firms[agent_name]['inventory']),
+                'timestep': int(self.state['timestep']),
             }
     
     def observe(self, agent):
