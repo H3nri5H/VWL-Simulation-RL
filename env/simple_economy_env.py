@@ -27,11 +27,19 @@ class SimpleEconomyEnv:
         # Agent IDs
         self._agent_ids = {f"firm_{i}" for i in range(self.n_firms)}
         
-        # Spaces
-        self.observation_space = Box(low=0.0, high=1000.0, shape=(7,), dtype=np.float32)
-        self.action_space = MultiDiscrete([5, 5])
+        # Single observation/action space (same for all agents)
+        self._obs_space = Box(low=0.0, high=1000.0, shape=(7,), dtype=np.float32)
+        self._action_space = MultiDiscrete([5, 5])
         
         self.reset()
+    
+    def observation_space(self, agent_id):
+        """Return observation space for a specific agent."""
+        return self._obs_space
+    
+    def action_space(self, agent_id):
+        """Return action space for a specific agent."""
+        return self._action_space
     
     def reset(self, *, seed=None, options=None):
         """Reset environment.
