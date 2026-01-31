@@ -16,31 +16,41 @@ st.set_page_config(page_title="VWL Simulation Dashboard", layout="wide")
 
 def load_checkpoints():
     """Load all available checkpoints"""
-    checkpoint_dir = Path("./checkpoints").absolute()  # Use absolute path
+    checkpoint_dir = Path("./checkpoints").absolute()
     
     if not checkpoint_dir.exists():
         return []
     
-    # Ray saves directly to ./checkpoints/ (not in subdirectories)
+    # Ray saves directly to ./checkpoints/
     metadata_file = checkpoint_dir / "policies" / "metadata.json"
+    rllib_config_file = checkpoint_dir / "rllib_checkpoint.json"
     
-    if metadata_file.exists():
+    if metadata_file.exists() and rllib_config_file.exists():
         with open(metadata_file, 'r') as f:
             metadata = json.load(f)
         
+        with open(rllib_config_file, 'r') as f:
+            rllib_config = json.load(f)
+        
+        # Extract env_config from checkpoint
+        env_config = rllib_config.get('env_config', {})
+        
         return [{
-            'path': str(checkpoint_dir),  # Already absolute
+            'path': str(checkpoint_dir),
             'iteration': metadata.get('iteration', 0),
             'reward': metadata.get('reward_mean', 0.0),
-            'is_favorite': metadata.get('is_favorite', False)
+            'is_favorite': metadata.get('is_favorite', False),
+            'n_firms': env_config.get('n_firms', 2),
+            'n_households': env_config.get('n_households', 10),
+            'max_steps': env_config.get('max_steps', 100),
         }]
     
     return []
 
-def run_simulation(checkpoint_path, n_firms, n_households, n_steps):
+def run_simulation(checkpoint_path, n_firms, n_households, n_steps, 
+                   price_range, wage_range, money_range):
     """Run simulation using trained checkpoint"""
     
-    # Ensure checkpoint path is absolute
     checkpoint_path = os.path.abspath(checkpoint_path)
     
     env_config = {
@@ -52,7 +62,7 @@ def run_simulation(checkpoint_path, n_firms, n_households, n_steps):
     # Restore algorithm from checkpoint
     algo = PPO.from_checkpoint(checkpoint_path)
     
-    # Create environment
+    # Create environment with custom initial ranges
     env = SimpleEconomyEnv(env_config)
     
     # Storage for results
@@ -62,6 +72,17 @@ def run_simulation(checkpoint_path, n_firms, n_households, n_steps):
                       for i in range(n_households)}
     
     obs, info = env.reset()
+    
+    # Override initial values with custom ranges
+    import numpy as np
+    for i in range(n_firms):
+        firm_id = f"firm_{i}"
+        env.firms[firm_id]['price'] = np.random.uniform(price_range[0], price_range[1])
+        env.firms[firm_id]['wage'] = np.random.uniform(wage_range[0], wage_range[1])
+    
+    for hh in env.households:
+        hh['money'] = np.random.uniform(money_range[0], money_range[1])
+    
     done = False
     step = 0
     
@@ -75,7 +96,7 @@ def run_simulation(checkpoint_path, n_firms, n_households, n_steps):
         # Step environment
         obs, rewards, dones, truncated, info = env.step(actions)
         
-        # Record firm data (env.firms is a dict with keys 'firm_0', 'firm_1', ...)
+        # Record firm data
         for i in range(n_firms):
             firm_id = f"firm_{i}"
             firm = env.firms[firm_id]
@@ -84,7 +105,7 @@ def run_simulation(checkpoint_path, n_firms, n_households, n_steps):
             firm_data[i]['profits'].append(firm['profit'])
             firm_data[i]['employees'].append(firm['employees'])
         
-        # Record household data (env.households is a list of dicts)
+        # Record household data
         for i, hh in enumerate(env.households):
             household_data[i]['money'].append(hh['money'])
             household_data[i]['employed'].append(1 if hh['employer'] is not None else 0)
@@ -118,31 +139,52 @@ selected_idx = st.sidebar.selectbox("Trained Version", range(len(checkpoint_opti
 
 selected_checkpoint = checkpoints[selected_idx]
 
-# Simulation parameters
-st.sidebar.subheader("⚙️ Simulation Setup")
-n_firms = st.sidebar.number_input("Number of Firms", min_value=1, max_value=10, value=2)
-n_households = st.sidebar.number_input("Number of Households", min_value=5, max_value=100, value=10)
-n_steps = st.sidebar.number_input("Simulation Steps", min_value=10, max_value=500, value=100)
+# Show fixed environment parameters from training
+st.sidebar.info(
+    f"📋 **Training Environment:**\n"
+    f"- Firms: {selected_checkpoint['n_firms']}\n"
+    f"- Households: {selected_checkpoint['n_households']}\n"
+    f"- Max Steps: {selected_checkpoint['max_steps']}"
+)
+
+# Simulation parameters - only initial ranges!
+st.sidebar.subheader("⚙️ Initial Parameter Ranges")
+
+st.sidebar.markdown("**Initial Price Range (per Firm)**")
+price_min = st.sidebar.number_input("Min Price", min_value=1.0, max_value=50.0, value=8.0, step=0.5)
+price_max = st.sidebar.number_input("Max Price", min_value=1.0, max_value=50.0, value=15.0, step=0.5)
+
+st.sidebar.markdown("**Initial Wage Range (per Firm)**")
+wage_min = st.sidebar.number_input("Min Wage", min_value=1.0, max_value=20.0, value=5.0, step=0.5)
+wage_max = st.sidebar.number_input("Max Wage", min_value=1.0, max_value=20.0, value=12.0, step=0.5)
+
+st.sidebar.markdown("**Initial Money Range (per Household)**")
+money_min = st.sidebar.number_input("Min Money", min_value=0.0, max_value=200.0, value=30.0, step=5.0)
+money_max = st.sidebar.number_input("Max Money", min_value=0.0, max_value=200.0, value=70.0, step=5.0)
 
 # Run button
 if st.sidebar.button("🚀 Start Simulation", type="primary"):
     with st.spinner("Running simulation..."):
         firm_data, household_data = run_simulation(
             selected_checkpoint['path'],
-            n_firms,
-            n_households,
-            n_steps
+            selected_checkpoint['n_firms'],
+            selected_checkpoint['n_households'],
+            selected_checkpoint['max_steps'],
+            (price_min, price_max),
+            (wage_min, wage_max),
+            (money_min, money_max)
         )
         st.session_state['firm_data'] = firm_data
         st.session_state['household_data'] = household_data
-        st.session_state['n_steps'] = n_steps
+        st.session_state['n_steps'] = selected_checkpoint['max_steps']
+        st.session_state['n_firms'] = selected_checkpoint['n_firms']
         st.success("✅ Simulation complete!")
 
 # Main content
 st.title("📊 VWL Simulation Dashboard")
 
 if 'firm_data' not in st.session_state:
-    st.info("👈 Configure parameters and click 'Start Simulation' to begin")
+    st.info("👈 Configure initial parameter ranges and click 'Start Simulation' to begin")
     st.stop()
 
 # Tabs
@@ -273,6 +315,8 @@ with tab3:
     st.header("Economic Summary")
     
     col1, col2, col3 = st.columns(3)
+    
+    n_firms = st.session_state['n_firms']
     
     with col1:
         avg_price = sum(data['prices'][-1] for data in st.session_state['firm_data'].values()) / n_firms
