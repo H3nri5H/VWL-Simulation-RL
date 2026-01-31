@@ -11,7 +11,7 @@ st.set_page_config(page_title="VWL Simulation Dashboard", layout="wide")
 
 def load_checkpoints():
     """Load all available checkpoints"""
-    checkpoint_dir = Path("./checkpoints")
+    checkpoint_dir = Path("./checkpoints").absolute()  # Use absolute path
     
     if not checkpoint_dir.exists():
         return []
@@ -24,7 +24,7 @@ def load_checkpoints():
             metadata = json.load(f)
         
         return [{
-            'path': str(checkpoint_dir),
+            'path': str(checkpoint_dir),  # Already absolute
             'iteration': metadata.get('iteration', 0),
             'reward': metadata.get('reward_mean', 0.0),
             'is_favorite': metadata.get('is_favorite', False)
@@ -34,6 +34,9 @@ def load_checkpoints():
 
 def run_simulation(checkpoint_path, n_firms, n_households, n_steps):
     """Run simulation using trained checkpoint"""
+    
+    # Ensure checkpoint path is absolute
+    checkpoint_path = os.path.abspath(checkpoint_path)
     
     env_config = {
         'n_firms': n_firms,
