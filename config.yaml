@@ -1,0 +1,76 @@
+# VWL Simulation Configuration
+# Modify these values to customize your simulation
+
+# ============================================================================
+# ENVIRONMENT CONFIGURATION
+# ============================================================================
+environment:
+  n_firms: 2                    # Number of competing firms
+  n_households: 10              # Number of households (consumers + workers)
+  max_steps: 100                # Steps per episode
+
+# ============================================================================
+# INITIAL VALUE RANGES (at episode start)
+# ============================================================================
+initial_ranges:
+  # Firm starting values
+  firms:
+    price:
+      min: 8.0                  # Minimum initial price
+      max: 15.0                 # Maximum initial price
+    wage:
+      min: 5.0                  # Minimum initial wage
+      max: 12.0                 # Maximum initial wage
+    max_employees:
+      min: 3                    # Minimum capacity
+      max: 8                    # Maximum capacity
+  
+  # Household starting values
+  households:
+    money:
+      min: 40.0                 # Minimum starting capital
+      max: 60.0                 # Maximum starting capital
+
+# ============================================================================
+# TRAINING CONFIGURATION
+# ============================================================================
+training:
+  iterations: 50                # Total training iterations
+  checkpoint_frequency: 10      # Save checkpoint every N iterations
+  
+  # PPO Hyperparameters
+  ppo:
+    learning_rate: 0.0003
+    gamma: 0.99                 # Discount factor
+    lambda: 0.95                # GAE lambda
+    clip_param: 0.2             # PPO clip parameter
+    train_batch_size: 400
+    minibatch_size: 128
+    num_epochs: 10
+  
+  # Parallel workers
+  resources:
+    num_env_runners: 2          # Parallel workers for sampling
+    num_gpus: 0                 # GPUs for training (0 = CPU only)
+
+# ============================================================================
+# ECONOMIC PARAMETERS
+# ============================================================================
+economy:
+  # Firm behavior
+  price_adjustment: 0.05        # How much price changes per action (5%)
+  wage_adjustment: 0.05         # How much wage changes per action (5%)
+  
+  # Bounds
+  price_bounds:
+    min: 1.0
+    max: 50.0
+  wage_bounds:
+    min: 1.0
+    max: 20.0
+  
+  # Household behavior
+  consumption_rate: 0.6         # % of money spent per step
+  
+  # Reward scaling
+  reward_scale: 10.0            # Divide profit by this for reward
