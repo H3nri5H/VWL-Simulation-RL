@@ -1,5 +1,7 @@
 import numpy as np
-from gymnasium.spaces import Box, Discrete, MultiDiscrete
+import yaml
+from pathlib import Path
+from gymnasium.spaces import Box, MultiDiscrete
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
@@ -8,15 +10,52 @@ class SimpleEconomyEnv(MultiAgentEnv):
     def __init__(self, config=None):
         super().__init__()
         
+        # Load default config from YAML
+        config_path = Path(__file__).parent.parent / "config.yaml"
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                default_config = yaml.safe_load(f)
+        else:
+            default_config = {}
+        
+        # Merge with provided config (provided config takes precedence)
         config = config or {}
-        self.n_firms = config.get('n_firms', 2)
-        self.n_households = config.get('n_households', 10)
-        self.max_steps = config.get('max_steps', 100)
+        
+        # Environment parameters
+        env_cfg = default_config.get('environment', {})
+        self.n_firms = config.get('n_firms', env_cfg.get('n_firms', 2))
+        self.n_households = config.get('n_households', env_cfg.get('n_households', 10))
+        self.max_steps = config.get('max_steps', env_cfg.get('max_steps', 100))
+        
+        # Initial ranges
+        init_ranges = default_config.get('initial_ranges', {})
+        self.init_ranges = {
+            'firms': init_ranges.get('firms', {}),
+            'households': init_ranges.get('households', {})
+        }
+        
+        # Economic parameters
+        econ_cfg = default_config.get('economy', {})
+        self.price_adjustment = econ_cfg.get('price_adjustment', 0.05)
+        self.wage_adjustment = econ_cfg.get('wage_adjustment', 0.05)
+        self.consumption_rate = econ_cfg.get('consumption_rate', 0.6)
+        self.reward_scale = econ_cfg.get('reward_scale', 10.0)
+        
+        price_bounds = econ_cfg.get('price_bounds', {'min': 1.0, 'max': 50.0})
+        wage_bounds = econ_cfg.get('wage_bounds', {'min': 1.0, 'max': 20.0})
+        self.price_min = price_bounds['min']
+        self.price_max = price_bounds['max']
+        self.wage_min = wage_bounds['min']
+        self.wage_max = wage_bounds['max']
         
         self._agent_ids = set(f"firm_{i}" for i in range(self.n_firms))
         
-        # Observation: [own_price, own_wage, own_employees, own_profit, avg_other_price, avg_other_wage, timestep]
-        self._obs_space = Box(low=-100.0, high=100.0, shape=(7,), dtype=np.float32)
+        # Improved Observation Space:
+        # [own_price, own_wage, own_employees, own_profit,
+        #  market_avg_price, market_min_price, market_max_price,
+        #  market_avg_wage, market_min_wage, market_max_wage,
+        #  total_employed, unemployment_rate, timestep]
+        self._obs_space = Box(low=-100.0, high=100.0, shape=(13,), dtype=np.float32)
         
         # Action: [price_change, wage_change]
         # Each can be: 0=decrease, 1=keep, 2=increase
@@ -36,13 +75,21 @@ class SimpleEconomyEnv(MultiAgentEnv):
         if seed is not None:
             np.random.seed(seed)
         
+        # Get initial ranges
+        firm_ranges = self.init_ranges.get('firms', {})
+        hh_ranges = self.init_ranges.get('households', {})
+        
+        price_range = firm_ranges.get('price', {'min': 8.0, 'max': 15.0})
+        wage_range = firm_ranges.get('wage', {'min': 5.0, 'max': 12.0})
+        emp_range = firm_ranges.get('max_employees', {'min': 3, 'max': 8})
+        money_range = hh_ranges.get('money', {'min': 40.0, 'max': 60.0})
+        
         self.firms = {}
         for i in range(self.n_firms):
-            # Firms start with random values
             self.firms[f"firm_{i}"] = {
-                'price': np.random.uniform(8.0, 15.0),
-                'wage': np.random.uniform(5.0, 12.0),
-                'max_employees': np.random.randint(3, 8),  # Limited capacity
+                'price': np.random.uniform(price_range['min'], price_range['max']),
+                'wage': np.random.uniform(wage_range['min'], wage_range['max']),
+                'max_employees': np.random.randint(emp_range['min'], emp_range['max'] + 1),
                 'employees': 0,
                 'profit': 0.0,
                 'revenue': 0.0,
@@ -52,7 +99,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         self.households = []
         for _ in range(self.n_households):
             self.households.append({
-                'money': 50.0,
+                'money': np.random.uniform(money_range['min'], money_range['max']),
                 'employer': None,
                 'wage': 0.0,
             })
@@ -70,25 +117,32 @@ class SimpleEconomyEnv(MultiAgentEnv):
             
             # Price adjustment
             if price_action == 0:
-                self.firms[agent_id]['price'] *= 0.95  # -5%
+                self.firms[agent_id]['price'] *= (1 - self.price_adjustment)
             elif price_action == 2:
-                self.firms[agent_id]['price'] *= 1.05  # +5%
+                self.firms[agent_id]['price'] *= (1 + self.price_adjustment)
             
             # Wage adjustment
             if wage_action == 0:
-                self.firms[agent_id]['wage'] *= 0.95  # -5%
+                self.firms[agent_id]['wage'] *= (1 - self.wage_adjustment)
             elif wage_action == 2:
-                self.firms[agent_id]['wage'] *= 1.05  # +5%
+                self.firms[agent_id]['wage'] *= (1 + self.wage_adjustment)
             
-            # Clip to reasonable bounds
-            self.firms[agent_id]['price'] = np.clip(self.firms[agent_id]['price'], 1.0, 50.0)
-            self.firms[agent_id]['wage'] = np.clip(self.firms[agent_id]['wage'], 1.0, 20.0)
+            # Clip to bounds
+            self.firms[agent_id]['price'] = np.clip(
+                self.firms[agent_id]['price'], 
+                self.price_min, 
+                self.price_max
+            )
+            self.firms[agent_id]['wage'] = np.clip(
+                self.firms[agent_id]['wage'], 
+                self.wage_min, 
+                self.wage_max
+            )
             
             # Reset employee count for this step
             self.firms[agent_id]['employees'] = 0
         
-        # Phase 2: Households choose employer (highest wage with capacity)
-        # Reset all employment
+        # Phase 2: Labor market - Households choose employer
         for household in self.households:
             household['employer'] = None
             household['wage'] = 0.0
@@ -111,14 +165,14 @@ class SimpleEconomyEnv(MultiAgentEnv):
                     household['money'] += firm['wage']  # Get paid
                     break
         
-        # Phase 3: Households shop (buy from cheapest firm)
+        # Phase 3: Goods market - Households shop
         total_demand = {agent_id: 0.0 for agent_id in self._agent_ids}
         
         for household in self.households:
             if household['money'] <= 0:
                 continue
             
-            budget = household['money'] * 0.6  # Spend 60% of money
+            budget = household['money'] * self.consumption_rate
             prices = {aid: self.firms[aid]['price'] for aid in self._agent_ids}
             cheapest = min(prices, key=prices.get)
             
@@ -126,26 +180,21 @@ class SimpleEconomyEnv(MultiAgentEnv):
             total_demand[cheapest] += quantity
             household['money'] -= quantity * prices[cheapest]
         
-        # Phase 4: Calculate firm profits
+        # Phase 4: Calculate firm profits and rewards
         rewards = {}
         for agent_id in self._agent_ids:
             firm = self.firms[agent_id]
             
-            # Revenue from sales
             revenue = total_demand[agent_id] * firm['price']
-            
-            # Costs from wages
             wage_costs = firm['employees'] * firm['wage']
-            
-            # Profit = Revenue - Costs
             profit = revenue - wage_costs
             
             firm['revenue'] = revenue
             firm['costs'] = wage_costs
             firm['profit'] = profit
             
-            # Reward is profit (can be negative!)
-            rewards[agent_id] = profit / 10.0  # Scale down for training
+            # Reward is scaled profit
+            rewards[agent_id] = profit / self.reward_scale
         
         self.timestep += 1
         done = self.timestep >= self.max_steps
@@ -167,27 +216,40 @@ class SimpleEconomyEnv(MultiAgentEnv):
         return obs, rewards, dones, dones, infos
     
     def _get_obs(self, agent_id):
+        """Create observation with aggregated market data"""
         firm = self.firms[agent_id]
         
-        # Calculate averages of other firms
-        other_firms = [self.firms[aid] for aid in self._agent_ids if aid != agent_id]
+        # Collect all firm data
+        all_prices = [f['price'] for f in self.firms.values()]
+        all_wages = [f['wage'] for f in self.firms.values()]
         
-        if other_firms:
-            avg_other_price = np.mean([f['price'] for f in other_firms])
-            avg_other_wage = np.mean([f['wage'] for f in other_firms])
-        else:
-            avg_other_price = firm['price']
-            avg_other_wage = firm['wage']
+        # Market aggregates
+        market_avg_price = np.mean(all_prices)
+        market_min_price = np.min(all_prices)
+        market_max_price = np.max(all_prices)
+        
+        market_avg_wage = np.mean(all_wages)
+        market_min_wage = np.min(all_wages)
+        market_max_wage = np.max(all_wages)
+        
+        # Employment statistics
+        total_employed = sum(f['employees'] for f in self.firms.values())
+        unemployment_rate = 1.0 - (total_employed / self.n_households)
         
         obs = np.array([
             firm['price'],
             firm['wage'],
             firm['employees'],
-            firm['profit'] / 10.0,  # Normalize profit
-            avg_other_price,
-            avg_other_wage,
+            firm['profit'] / self.reward_scale,
+            market_avg_price,
+            market_min_price,
+            market_max_price,
+            market_avg_wage,
+            market_min_wage,
+            market_max_wage,
+            total_employed,
+            unemployment_rate,
             self.timestep / self.max_steps,
         ], dtype=np.float32)
         
-        # Safety clip to observation space bounds
         return np.clip(obs, -100.0, 100.0)
