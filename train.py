@@ -1,5 +1,6 @@
 import os
 import json
+import yaml
 import warnings
 import argparse
 import shutil
@@ -10,31 +11,99 @@ from env.economy_env import SimpleEconomyEnv
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 
-def train(iterations=50, checkpoint_freq=10):
+def load_config():
+    """Load configuration from config.yaml"""
+    config_path = Path("config.yaml")
+    if config_path.exists():
+        with open(config_path, 'r') as f:
+            return yaml.safe_load(f)
+    return {}
+
+
+def train(
+    # Environment parameters
+    n_firms=None,
+    n_households=None,
+    max_steps=None,
+    # Training parameters
+    iterations=None,
+    checkpoint_freq=None,
+    # PPO parameters
+    learning_rate=None,
+    gamma=None,
+    lambda_=None,
+    clip_param=None,
+    # Resources
+    num_env_runners=None,
+    num_gpus=None,
+):
+    # Load config
+    config = load_config()
+    
+    # Environment config (use args or config.yaml or defaults)
+    env_cfg = config.get('environment', {})
     env_config = {
-        'n_firms': 2,
-        'n_households': 10,
-        'max_steps': 100,
+        'n_firms': n_firms or env_cfg.get('n_firms', 2),
+        'n_households': n_households or env_cfg.get('n_households', 10),
+        'max_steps': max_steps or env_cfg.get('max_steps', 100),
     }
     
-    # Use absolute paths
+    # Training config
+    train_cfg = config.get('training', {})
+    iterations = iterations or train_cfg.get('iterations', 50)
+    checkpoint_freq = checkpoint_freq or train_cfg.get('checkpoint_frequency', 10)
+    
+    # PPO config
+    ppo_cfg = train_cfg.get('ppo', {})
+    lr = learning_rate or ppo_cfg.get('learning_rate', 3e-4)
+    gamma_val = gamma or ppo_cfg.get('gamma', 0.99)
+    lambda_val = lambda_ or ppo_cfg.get('lambda', 0.95)
+    clip_val = clip_param or ppo_cfg.get('clip_param', 0.2)
+    train_batch = ppo_cfg.get('train_batch_size', 400)
+    minibatch = ppo_cfg.get('minibatch_size', 128)
+    epochs = ppo_cfg.get('num_epochs', 10)
+    
+    # Resources
+    res_cfg = train_cfg.get('resources', {})
+    n_workers = num_env_runners or res_cfg.get('num_env_runners', 2)
+    n_gpus = num_gpus if num_gpus is not None else res_cfg.get('num_gpus', 0)
+    
+    # Setup directories
     checkpoint_dir = os.path.abspath("./checkpoints")
     metrics_dir = os.path.abspath("./metrics")
     
-    # Clear old data from previous training runs
-    print("Clearing old training data...")
+    print("\n" + "="*70)
+    print("  VWL SIMULATION - REINFORCEMENT LEARNING TRAINING")
+    print("="*70)
+    
+    # Clear old data
+    print("\n[1/4] Preparing environment...")
     if os.path.exists(checkpoint_dir):
         shutil.rmtree(checkpoint_dir)
-        print(f"  ✓ Removed old checkpoints")
+        print("  ✓ Cleared old checkpoints")
     if os.path.exists(metrics_dir):
         shutil.rmtree(metrics_dir)
-        print(f"  ✓ Removed old metrics")
+        print("  ✓ Cleared old metrics")
     
-    # Create fresh directories
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(metrics_dir, exist_ok=True)
     
-    config = (
+    # Display configuration
+    print("\n[2/4] Configuration:")
+    print(f"  Environment:")
+    print(f"    - Firms: {env_config['n_firms']}")
+    print(f"    - Households: {env_config['n_households']}")
+    print(f"    - Steps per episode: {env_config['max_steps']}")
+    print(f"  Training:")
+    print(f"    - Iterations: {iterations}")
+    print(f"    - Checkpoint every: {checkpoint_freq} iterations")
+    print(f"    - Learning rate: {lr}")
+    print(f"    - Workers: {n_workers}")
+    print(f"    - GPUs: {n_gpus}")
+    
+    # Build PPO config
+    print("\n[3/4] Building PPO algorithm...")
+    rllib_config = (
         PPOConfig()
         .api_stack(
             enable_rl_module_and_learner=False,
@@ -46,17 +115,17 @@ def train(iterations=50, checkpoint_freq=10):
         )
         .framework("torch")
         .env_runners(
-            num_env_runners=2,
+            num_env_runners=n_workers,
             rollout_fragment_length=200,
         )
         .training(
-            train_batch_size=400,
-            minibatch_size=128,
-            num_epochs=10,
-            lr=3e-4,
-            gamma=0.99,
-            lambda_=0.95,
-            clip_param=0.2,
+            train_batch_size=train_batch,
+            minibatch_size=minibatch,
+            num_epochs=epochs,
+            lr=lr,
+            gamma=gamma_val,
+            lambda_=lambda_val,
+            clip_param=clip_val,
         )
         .multi_agent(
             policies={
@@ -70,26 +139,31 @@ def train(iterations=50, checkpoint_freq=10):
             policy_mapping_fn=lambda agent_id, *args, **kwargs: "shared_policy",
         )
         .resources(
-            num_gpus=0,
+            num_gpus=n_gpus,
         )
     )
     
-    print(f"\nStarting new training: {iterations} iterations")
-    print(f"Firms: {env_config['n_firms']}, Households: {env_config['n_households']}")
-    print(f"Checkpoint frequency: every {checkpoint_freq} iterations\n")
+    algo = rllib_config.build()
+    print("  ✓ Algorithm ready")
     
-    algo = config.build()
+    # Training loop
+    print("\n[4/4] Training...")
+    print("\n" + "-"*70)
+    print(f"{'Iter':<6} {'Reward':<12} {'Min':<10} {'Max':<10} {'Ep Len':<10}")
+    print("-"*70)
     
     for i in range(iterations):
         result = algo.train()
         
         env_runners = result.get('env_runners', {})
         reward_mean = env_runners.get('episode_reward_mean', 0.0)
+        reward_min = env_runners.get('episode_reward_min', 0.0)
+        reward_max = env_runners.get('episode_reward_max', 0.0)
         episode_len = env_runners.get('episode_len_mean', 0.0)
         
-        print(f"[{i+1}/{iterations}] Reward: {reward_mean:.2f}, Length: {episode_len:.0f}")
+        print(f"{i+1:<6} {reward_mean:<12.2f} {reward_min:<10.2f} {reward_max:<10.2f} {episode_len:<10.0f}")
         
-        # Only save metrics at checkpoint intervals (not every iteration)
+        # Checkpoint?
         should_checkpoint = (i + 1) % checkpoint_freq == 0 or (i + 1) == iterations
         
         if should_checkpoint:
@@ -103,63 +177,18 @@ def train(iterations=50, checkpoint_freq=10):
                     'training_iteration': i + 1,
                     'env_runners': {
                         'episode_reward_mean': reward_mean,
-                        'episode_reward_min': env_runners.get('episode_reward_min', 0.0),
-                        'episode_reward_max': env_runners.get('episode_reward_max', 0.0),
+                        'episode_reward_min': reward_min,
+                        'episode_reward_max': reward_max,
                         'episode_len_mean': episode_len,
                     }
                 }, f)
             
-            print(f"\n=== SAVING CHECKPOINT ===")
-            print(f"Target directory: {checkpoint_dir}")
-            
-            # Save full checkpoint
+            # Save checkpoint
             checkpoint_result = algo.save(checkpoint_dir)
-            
-            print(f"\nCheckpoint result type: {type(checkpoint_result)}")
-            print(f"Checkpoint result value: {checkpoint_result}")
-            print(f"Checkpoint result dir: {dir(checkpoint_result)}")
-            
-            # Get actual checkpoint path - try multiple methods
-            checkpoint_path = None
-            
-            if hasattr(checkpoint_result, 'checkpoint'):
-                print(f"Has .checkpoint attribute")
-                checkpoint_path = checkpoint_result.checkpoint.path
-            elif hasattr(checkpoint_result, 'path'):
-                print(f"Has .path attribute")
-                checkpoint_path = checkpoint_result.path
-            elif isinstance(checkpoint_result, (str, os.PathLike)):
-                print(f"Is string/PathLike")
-                checkpoint_path = str(checkpoint_result)
-            else:
-                print(f"Unknown type, converting to string")
-                checkpoint_path = str(checkpoint_result)
-            
-            print(f"\nExtracted checkpoint path: {checkpoint_path}")
-            print(f"Path exists: {os.path.exists(checkpoint_path)}")
-            print(f"Path is dir: {os.path.isdir(checkpoint_path) if os.path.exists(checkpoint_path) else 'N/A'}")
-            
-            # List all directories in checkpoint_dir
-            print(f"\nAll items in {checkpoint_dir}:")
-            if os.path.exists(checkpoint_dir):
-                for item in os.listdir(checkpoint_dir):
-                    item_path = os.path.join(checkpoint_dir, item)
-                    print(f"  - {item} (dir: {os.path.isdir(item_path)})")
-            
-            # Try to find ANY checkpoint directory
-            checkpoint_base = Path(checkpoint_dir)
-            if checkpoint_base.exists():
-                checkpoint_dirs = [d for d in checkpoint_base.iterdir() if d.is_dir()]
-                print(f"\nFound {len(checkpoint_dirs)} directories in checkpoint folder")
-                
-                if checkpoint_dirs:
-                    # Use most recent
-                    actual_path = max(checkpoint_dirs, key=lambda p: p.stat().st_mtime)
-                    checkpoint_path = str(actual_path)
-                    print(f"Using most recent: {checkpoint_path}")
+            checkpoint_path = str(checkpoint_result.checkpoint.path)
             
             # Save metadata
-            if checkpoint_path and os.path.exists(checkpoint_path) and os.path.isdir(checkpoint_path):
+            if os.path.exists(checkpoint_path) and os.path.isdir(checkpoint_path):
                 metadata_file = os.path.join(checkpoint_path, "metadata.json")
                 is_final = (i + 1) == iterations
                 
@@ -175,33 +204,69 @@ def train(iterations=50, checkpoint_freq=10):
                 with open(metadata_file, 'w') as f:
                     json.dump(metadata, f, indent=2)
                 
-                print(f"\n✓ Metadata saved: {metadata_file}")
-                print(f"Metadata content: {metadata}")
-                
                 if is_final:
-                    print(f"⭐ Marked as favorite\n")
-            else:
-                print(f"\n⚠️ Could not save metadata - invalid checkpoint path")
-            
-            print("=" * 50 + "\n")
+                    print(f"\n  ⭐ Checkpoint {i+1} saved (marked as favorite)")
+                else:
+                    print(f"\n  💾 Checkpoint {i+1} saved")
     
-    print(f"\n✅ Training complete!")
-    print(f"\nFinal checkpoint directory listing:")
-    if os.path.exists(checkpoint_dir):
-        for item in Path(checkpoint_dir).iterdir():
-            if item.is_dir():
-                print(f"  - {item.name}")
-                metadata_file = item / "metadata.json"
-                if metadata_file.exists():
-                    print(f"    ✓ Has metadata.json")
+    print("-"*70)
+    print("\n✅ Training complete!\n")
     
     algo.stop()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--iterations", type=int, default=50)
-    parser.add_argument("--checkpoint-freq", type=int, default=10)
+    parser = argparse.ArgumentParser(
+        description="Train VWL simulation with configurable parameters",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Use defaults from config.yaml
+  python train.py
+  
+  # Override specific parameters
+  python train.py --n-firms 5 --n-households 20 --iterations 100
+  
+  # Quick test run
+  python train.py --iterations 10 --checkpoint-freq 5
+        """
+    )
+    
+    # Environment parameters
+    env_group = parser.add_argument_group('Environment')
+    env_group.add_argument("--n-firms", type=int, help="Number of firms")
+    env_group.add_argument("--n-households", type=int, help="Number of households")
+    env_group.add_argument("--max-steps", type=int, help="Steps per episode")
+    
+    # Training parameters
+    train_group = parser.add_argument_group('Training')
+    train_group.add_argument("--iterations", type=int, help="Total training iterations")
+    train_group.add_argument("--checkpoint-freq", type=int, help="Checkpoint frequency")
+    
+    # PPO parameters
+    ppo_group = parser.add_argument_group('PPO Hyperparameters')
+    ppo_group.add_argument("--lr", type=float, help="Learning rate")
+    ppo_group.add_argument("--gamma", type=float, help="Discount factor")
+    ppo_group.add_argument("--lambda", type=float, dest='lambda_', help="GAE lambda")
+    ppo_group.add_argument("--clip-param", type=float, help="PPO clip parameter")
+    
+    # Resources
+    res_group = parser.add_argument_group('Resources')
+    res_group.add_argument("--num-workers", type=int, help="Number of parallel workers")
+    res_group.add_argument("--num-gpus", type=int, help="Number of GPUs")
+    
     args = parser.parse_args()
     
-    train(iterations=args.iterations, checkpoint_freq=args.checkpoint_freq)
+    train(
+        n_firms=args.n_firms,
+        n_households=args.n_households,
+        max_steps=args.max_steps,
+        iterations=args.iterations,
+        checkpoint_freq=args.checkpoint_freq,
+        learning_rate=args.lr,
+        gamma=args.gamma,
+        lambda_=args.lambda_,
+        clip_param=args.clip_param,
+        num_env_runners=args.num_workers,
+        num_gpus=args.num_gpus,
+    )
