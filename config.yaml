@@ -57,20 +57,20 @@ training:
 # ECONOMIC PARAMETERS
 # ============================================================================
 economy:
-  # Firm behavior
-  price_adjustment: 0.05        # How much price changes per action (5%)
-  wage_adjustment: 0.05         # How much wage changes per action (5%)
+  # Action Space (defined in env/economy_env.py):
+  # - Price/Wage adjustments: -10%, -5%, 0%, +5%, +10% (5 discrete actions)
+  # - Firms choose one adjustment level per parameter each step
   
-  # Bounds
+  # Bounds (firms cannot set prices/wages outside these limits)
   price_bounds:
-    min: 1.0
-    max: 50.0
+    min: 1.0                    # Minimum allowed price
+    max: 50.0                   # Maximum allowed price
   wage_bounds:
-    min: 1.0
-    max: 20.0
+    min: 1.0                    # Minimum allowed wage
+    max: 20.0                   # Maximum allowed wage
   
   # Household behavior
-  consumption_rate: 0.6         # % of money spent per step
+  consumption_rate: 0.6         # % of money households spend per step
   
   # Reward scaling
-  reward_scale: 10.0            # Divide profit by this for reward
+  reward_scale: 10.0            # Divide profit by this for reward normalization

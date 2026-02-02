@@ -36,8 +36,15 @@ class SimpleEconomyEnv(MultiAgentEnv):
         
         # Economic parameters
         econ_cfg = default_config.get('economy', {})
-        self.price_adjustment = econ_cfg.get('price_adjustment', 0.05)
-        self.wage_adjustment = econ_cfg.get('wage_adjustment', 0.05)
+        # Adjustment rates for each action level
+        self.adjustment_rates = {
+            0: -0.10,  # -10%
+            1: -0.05,  # -5%
+            2: 0.00,   # 0% (no change)
+            3: 0.05,   # +5%
+            4: 0.10,   # +10%
+        }
+        
         self.consumption_rate = econ_cfg.get('consumption_rate', 0.6)
         self.reward_scale = econ_cfg.get('reward_scale', 10.0)
         
@@ -58,8 +65,8 @@ class SimpleEconomyEnv(MultiAgentEnv):
         self._obs_space = Box(low=-100.0, high=100.0, shape=(13,), dtype=np.float32)
         
         # Action: [price_change, wage_change]
-        # Each can be: 0=decrease, 1=keep, 2=increase
-        self._action_space = MultiDiscrete([3, 3])
+        # Each can be: 0=-10%, 1=-5%, 2=0%, 3=+5%, 4=+10%
+        self._action_space = MultiDiscrete([5, 5])
         
         self.reset()
     
@@ -112,20 +119,19 @@ class SimpleEconomyEnv(MultiAgentEnv):
     def step(self, action_dict):
         # Phase 1: Firms adjust price and wage based on actions
         for agent_id, action in action_dict.items():
-            price_action = action[0]  # 0=decrease, 1=keep, 2=increase
+            price_action = action[0]  # 0=-10%, 1=-5%, 2=0%, 3=+5%, 4=+10%
             wage_action = action[1]
             
-            # Price adjustment
-            if price_action == 0:
-                self.firms[agent_id]['price'] *= (1 - self.price_adjustment)
-            elif price_action == 2:
-                self.firms[agent_id]['price'] *= (1 + self.price_adjustment)
+            # Get adjustment rates
+            price_adjustment = self.adjustment_rates[price_action]
+            wage_adjustment = self.adjustment_rates[wage_action]
             
-            # Wage adjustment
-            if wage_action == 0:
-                self.firms[agent_id]['wage'] *= (1 - self.wage_adjustment)
-            elif wage_action == 2:
-                self.firms[agent_id]['wage'] *= (1 + self.wage_adjustment)
+            # Apply adjustments
+            if price_adjustment != 0:
+                self.firms[agent_id]['price'] *= (1 + price_adjustment)
+            
+            if wage_adjustment != 0:
+                self.firms[agent_id]['wage'] *= (1 + wage_adjustment)
             
             # Clip to bounds
             self.firms[agent_id]['price'] = np.clip(
