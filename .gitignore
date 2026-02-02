@@ -70,3 +70,4 @@ plots/
 *.png
 *.jpg
 *.pdf
+config.yaml
