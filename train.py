@@ -4,6 +4,7 @@ import yaml
 import warnings
 import argparse
 import shutil
+import time
 from pathlib import Path
 from ray.rllib.algorithms.ppo import PPOConfig
 from env.economy_env import SimpleEconomyEnv
@@ -18,6 +19,25 @@ def load_config():
         with open(config_path, 'r') as f:
             return yaml.safe_load(f)
     return {}
+
+
+def safe_rmtree(path, max_retries=3):
+    """Safely remove directory tree with retry on Windows permission errors"""
+    for attempt in range(max_retries):
+        try:
+            if os.path.exists(path):
+                shutil.rmtree(path)
+            return True
+        except PermissionError:
+            if attempt < max_retries - 1:
+                time.sleep(0.5)  # Wait a bit
+                continue
+            else:
+                # Last attempt failed, but don't crash - just warn
+                print(f"  ⚠ Warning: Could not delete {path} (files in use)")
+                print(f"    Training will continue, but old files may remain.")
+                return False
+    return False
 
 
 def train(
@@ -76,13 +96,11 @@ def train(
     print("  VWL SIMULATION - REINFORCEMENT LEARNING TRAINING")
     print("="*70)
     
-    # Clear old data
+    # Clear old data with safe removal
     print("\n[1/4] Preparing environment...")
-    if os.path.exists(checkpoint_dir):
-        shutil.rmtree(checkpoint_dir)
+    if safe_rmtree(checkpoint_dir):
         print("  ✓ Cleared old checkpoints")
-    if os.path.exists(metrics_dir):
-        shutil.rmtree(metrics_dir)
+    if safe_rmtree(metrics_dir):
         print("  ✓ Cleared old metrics")
     
     os.makedirs(checkpoint_dir, exist_ok=True)
