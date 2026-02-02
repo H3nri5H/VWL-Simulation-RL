@@ -1,3 +1,2 @@
-# Training Documentation
-
-In progress.
+# DEPRECATED - Placeholder file
+# Safe to delete
