@@ -1,6 +1,6 @@
-ray[rllib]==2.40.0
+ray[rllib]
 torch==2.5.1
-gymnasium==0.29.1
+gymnasium
 numpy<2.0.0
 streamlit==1.31.0
 plotly==5.18.0
