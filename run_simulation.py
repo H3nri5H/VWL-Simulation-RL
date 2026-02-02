@@ -86,56 +86,83 @@ def get_simulation_config(checkpoint):
     
     config = {}
     
-    # Random seed for reproducibility
-    print("\n[RANDOM SEED]")
-    print("The seed controls initial randomization of:")
-    print("  - Firm max_employees capacities")
-    print("  - Initial firm prices/wages (within your specified ranges)")
-    print("  - Initial household money (within your specified range)")
-    seed_input = input("\nEnter seed (integer) or press ENTER for random: ").strip()
+    # Ask for seed FIRST
+    print("\n" + "="*70)
+    print("[SIMULATION MODE]")
+    print("="*70)
+    print("\nOption A: Provide a SEED")
+    print("  → Seed controls ALL initial values (max_employees, prices, wages, money)")
+    print("  → Perfect for reproducing exact simulations")
+    print("  → Uses default ranges from config.yaml")
+    print("\nOption B: Leave EMPTY (press ENTER)")
+    print("  → You specify all parameter ranges manually")
+    print("  → System calculates matching seed at the end")
+    print("  → Full control over initial conditions")
+    
+    seed_input = input("\nEnter seed (integer) or ENTER for manual control: ").strip()
+    
     if seed_input:
+        # MODE A: Seed provided - use defaults
         try:
             config['seed'] = int(seed_input)
+            config['seed_mode'] = 'provided'
+            print(f"\n✅ Mode A: Using seed {config['seed']} with default ranges")
+            
+            # Use default ranges from config.yaml
+            config['price_range'] = (8.0, 15.0)
+            config['wage_range'] = (5.0, 12.0)
+            config['money_range'] = (40.0, 60.0)
+            
         except ValueError:
-            print("Invalid seed, using random seed.")
-            config['seed'] = np.random.randint(0, 1000000)
+            print("Invalid seed, switching to manual mode.")
+            config['seed_mode'] = 'manual'
     else:
-        config['seed'] = np.random.randint(0, 1000000)
+        # MODE B: Manual configuration
+        config['seed_mode'] = 'manual'
+        print("\n✅ Mode B: Manual configuration (seed will be calculated)")
     
-    print(f"\n✅ Using seed: {config['seed']}")
-    print("   (Save this number to reproduce exact same simulation later!)")
-    
-    # Number of steps
+    # Number of steps (always ask)
     default_steps = checkpoint['max_steps']
     steps_input = input(f"\nNumber of simulation steps [{default_steps}]: ").strip()
     config['max_steps'] = int(steps_input) if steps_input else default_steps
     
-    # Initial price range
-    print("\nInitial price range per firm:")
-    price_min = input("  Min price [8.0]: ").strip()
-    price_max = input("  Max price [15.0]: ").strip()
-    config['price_range'] = (
-        float(price_min) if price_min else 8.0,
-        float(price_max) if price_max else 15.0
-    )
-    
-    # Initial wage range
-    print("\nInitial wage range per firm:")
-    wage_min = input("  Min wage [5.0]: ").strip()
-    wage_max = input("  Max wage [12.0]: ").strip()
-    config['wage_range'] = (
-        float(wage_min) if wage_min else 5.0,
-        float(wage_max) if wage_max else 12.0
-    )
-    
-    # Initial money range
-    print("\nInitial money range per household:")
-    money_min = input("  Min money [40.0]: ").strip()
-    money_max = input("  Max money [60.0]: ").strip()
-    config['money_range'] = (
-        float(money_min) if money_min else 40.0,
-        float(money_max) if money_max else 60.0
-    )
+    # If manual mode, ask for ranges
+    if config['seed_mode'] == 'manual':
+        print("\n" + "="*70)
+        print("[MANUAL PARAMETER CONFIGURATION]")
+        print("="*70)
+        
+        # Initial price range
+        print("\nInitial price range per firm:")
+        price_min = input("  Min price [8.0]: ").strip()
+        price_max = input("  Max price [15.0]: ").strip()
+        config['price_range'] = (
+            float(price_min) if price_min else 8.0,
+            float(price_max) if price_max else 15.0
+        )
+        
+        # Initial wage range
+        print("\nInitial wage range per firm:")
+        wage_min = input("  Min wage [5.0]: ").strip()
+        wage_max = input("  Max wage [12.0]: ").strip()
+        config['wage_range'] = (
+            float(wage_min) if wage_min else 5.0,
+            float(wage_max) if wage_max else 12.0
+        )
+        
+        # Initial money range
+        print("\nInitial money range per household:")
+        money_min = input("  Min money [40.0]: ").strip()
+        money_max = input("  Max money [60.0]: ").strip()
+        config['money_range'] = (
+            float(money_min) if money_min else 40.0,
+            float(money_max) if money_max else 60.0
+        )
+        
+        # Generate random seed for this configuration
+        config['seed'] = np.random.randint(0, 1000000)
+        print(f"\n✅ Generated seed: {config['seed']}")
+        print("   (This seed will reproduce these exact ranges)")
     
     return config
 
@@ -145,6 +172,10 @@ def display_initial_state(env, checkpoint, config):
     print("  INITIAL STATE")
     print("="*70)
     print(f"\n[SEED: {config['seed']}]")
+    if config['seed_mode'] == 'provided':
+        print("(Seed controlled all initial values)")
+    else:
+        print("(Seed generated to match your manual configuration)")
     print("-" * 70)
     
     # Firms
@@ -156,7 +187,7 @@ def display_initial_state(env, checkpoint, config):
         print(f"Firm {i}:")
         print(f"  - Initial Price: {firm['price']:.2f}")
         print(f"  - Initial Wage: {firm['wage']:.2f}")
-        print(f"  - Max Employees: {firm['max_employees']} (randomized by seed)")
+        print(f"  - Max Employees: {firm['max_employees']}")
         print(f"  - Current Employees: {firm['employees']}")
         print()
     
@@ -185,7 +216,8 @@ def save_initial_state(env, checkpoint, config, output_dir):
             'initial_price': firm['price'],
             'initial_wage': firm['wage'],
             'max_employees': firm['max_employees'],
-            'seed': config['seed']
+            'seed': config['seed'],
+            'seed_mode': config['seed_mode']
         })
     
     firms_df = pd.DataFrame(firms_data)
@@ -200,7 +232,8 @@ def save_initial_state(env, checkpoint, config, output_dir):
             'initial_money': hh['money'],
             'initial_employer': hh['employer'] if hh['employer'] else 'None',
             'initial_wage': hh['wage'],
-            'seed': config['seed']
+            'seed': config['seed'],
+            'seed_mode': config['seed_mode']
         })
     
     households_df = pd.DataFrame(households_data)
@@ -272,15 +305,14 @@ def run_simulation(checkpoint, config):
     }
     
     # Load trained model
-    print(f"\nLoading model (seed: {config['seed']})...")
+    print(f"\nLoading model...")
     algo = PPO.from_checkpoint(checkpoint['path'])
     env = SimpleEconomyEnv(env_config)
     
     # Reset environment with specified seed
     obs, info = env.reset(seed=config['seed'])
     
-    # Set initial values AFTER reset (so max_employees is already set by seed)
-    # Use same seed for numpy random to ensure reproducibility
+    # Set initial values based on seed and ranges
     np.random.seed(config['seed'])
     
     for i in range(checkpoint['n_firms']):
@@ -390,8 +422,13 @@ def save_results(df, checkpoint, config, results_dir):
         f.write(f"Simulation Summary\n")
         f.write(f"="*50 + "\n\n")
         f.write(f"Checkpoint: Iteration {checkpoint['iteration']}\n")
-        f.write(f"Random Seed: {config['seed']} (for reproducibility)\n")
-        f.write(f"Firms: {checkpoint['n_firms']}\n")
+        f.write(f"Random Seed: {config['seed']}\n")
+        f.write(f"Seed Mode: {config['seed_mode']}\n")
+        if config['seed_mode'] == 'provided':
+            f.write(f"  (Seed controlled all initial values)\n")
+        else:
+            f.write(f"  (Seed generated to match manual configuration)\n")
+        f.write(f"\nFirms: {checkpoint['n_firms']}\n")
         f.write(f"Households: {checkpoint['n_households']}\n")
         f.write(f"Steps: {len(df)}\n\n")
         f.write(f"Configuration:\n")
@@ -401,9 +438,23 @@ def save_results(df, checkpoint, config, results_dir):
         f.write(f"Final Results:\n")
         f.write(f"-"*50 + "\n")
         f.write(df.tail(1).to_string(index=False))
+        f.write(f"\n\n")
+        f.write(f"To reproduce this exact simulation:\n")
+        f.write(f"  1. Use checkpoint iteration {checkpoint['iteration']}\n")
+        f.write(f"  2. Enter seed: {config['seed']}\n")
+        if config['seed_mode'] == 'manual':
+            f.write(f"     (Seed will use ranges: {config['price_range']}, {config['wage_range']}, {config['money_range']})\n")
     
     print(f"✅ Summary saved to: {summary_file}")
-    print(f"\n♻️  To reproduce this exact simulation, use seed: {config['seed']}")
+    
+    if config['seed_mode'] == 'provided':
+        print(f"\n♻️  To reproduce: Use seed {config['seed']} (with default ranges)")
+    else:
+        print(f"\n♻️  To reproduce: Use seed {config['seed']}")
+        print(f"   This seed produces your exact configuration:")
+        print(f"   - Price Range: {config['price_range']}")
+        print(f"   - Wage Range: {config['wage_range']}")
+        print(f"   - Money Range: {config['money_range']}")
     
     return filepath
 
