@@ -183,13 +183,17 @@ def train(
                     }
                 }, f)
             
-            # Save checkpoint - Ray creates subdirectory automatically
-            checkpoint_result = algo.save(checkpoint_dir)
+            # Create specific checkpoint folder
+            checkpoint_name = f"checkpoint_{i+1:06d}"
+            checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
+            os.makedirs(checkpoint_path, exist_ok=True)
             
-            # Get the actual checkpoint path Ray created
-            checkpoint_path = checkpoint_result.checkpoint.path
+            # Save checkpoint to specific directory
+            checkpoint_result = algo.save()
+            # Copy from temporary location to our folder
+            checkpoint_result.checkpoint.to_directory(checkpoint_path)
             
-            # Save metadata into the checkpoint folder Ray created
+            # Save metadata
             metadata_file = os.path.join(checkpoint_path, "metadata.json")
             is_final = (i + 1) == iterations
             
@@ -199,16 +203,16 @@ def train(
                 'episode_len_mean': episode_len,
                 'timestamp': result.get('timestamp', 0),
                 'is_favorite': is_final,
-                'checkpoint_path': str(checkpoint_path)
+                'checkpoint_path': checkpoint_path
             }
             
             with open(metadata_file, 'w') as f:
                 json.dump(metadata, f, indent=2)
             
             if is_final:
-                print(f"\n  ⭐ Checkpoint {i+1} saved to: {checkpoint_path}")
+                print(f"\n  ⭐ Checkpoint {i+1} saved: {checkpoint_path}")
             else:
-                print(f"\n  💾 Checkpoint {i+1} saved to: {checkpoint_path}")
+                print(f"\n  💾 Checkpoint {i+1} saved: {checkpoint_path}")
     
     print("-"*70)
     print("\n✅ Training complete!\n")
