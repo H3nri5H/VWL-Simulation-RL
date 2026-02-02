@@ -53,6 +53,7 @@ checkpoint_*/
 # Logs
 *.log
 logs/
+simulation_results/
 
 # Model Checkpoints
 models/

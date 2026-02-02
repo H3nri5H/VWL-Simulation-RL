@@ -7,7 +7,7 @@
 environment:
   n_firms: 2                    # Number of competing firms
   n_households: 10              # Number of households (consumers + workers)
-  max_steps: 100                # Steps per episode
+  max_steps: 50                # Steps per episode
 
 # ============================================================================
 # INITIAL VALUE RANGES (at episode start)
@@ -22,20 +22,20 @@ initial_ranges:
       min: 5.0                  # Minimum initial wage
       max: 12.0                 # Maximum initial wage
     max_employees:
-      min: 3                    # Minimum capacity
-      max: 8                    # Maximum capacity
+      min: 2                    # Minimum capacity
+      max: 10                    # Maximum capacity
   
   # Household starting values
   households:
     money:
-      min: 40.0                 # Minimum starting capital
-      max: 60.0                 # Maximum starting capital
+      min: 80.0                 # Minimum starting capital
+      max: 100.0                 # Maximum starting capital
 
 # ============================================================================
 # TRAINING CONFIGURATION
 # ============================================================================
 training:
-  iterations: 50                # Total training iterations
+  iterations: 20                # Total training iterations
   checkpoint_frequency: 10      # Save checkpoint every N iterations
   
   # PPO Hyperparameters
