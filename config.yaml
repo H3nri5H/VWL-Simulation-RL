@@ -7,7 +7,7 @@
 environment:
   n_firms: 2                    # Number of competing firms
   n_households: 10              # Number of households (consumers + workers)
-  max_steps: 50                # Steps per episode
+  max_steps: 50                 # Steps per episode
 
 # ============================================================================
 # INITIAL VALUE RANGES (at episode start)
@@ -23,13 +23,13 @@ initial_ranges:
       max: 12.0                 # Maximum initial wage
     max_employees:
       min: 2                    # Minimum capacity
-      max: 10                    # Maximum capacity
+      max: 10                   # Maximum capacity
   
   # Household starting values
   households:
     money:
       min: 80.0                 # Minimum starting capital
-      max: 100.0                 # Maximum starting capital
+      max: 100.0                # Maximum starting capital
 
 # ============================================================================
 # TRAINING CONFIGURATION
@@ -69,8 +69,22 @@ economy:
     min: 1.0                    # Minimum allowed wage
     max: 20.0                   # Maximum allowed wage
   
+  # Production parameters
+  production:
+    productivity_per_employee: 10.0   # Units produced per employee per step
+    cost_per_unit: 2.0                # Variable cost per unit produced
+    fixed_costs: 15.0                 # Fixed costs per step (rent, utilities)
+    storage_cost_per_unit: 0.5        # Cost to store unsold inventory per unit
+  
   # Household behavior
-  consumption_rate: 0.6         # % of money households spend per step
+  households:
+    consumption_rate: 0.6             # Base % of money households spend per step
+    utility_price_weight: 1.0         # Weight of price in utility calculation
+    utility_quality_weight: 0.5       # Weight of quality in utility calculation
+    # Household types (low/medium/high) affect consumption multipliers:
+    # - low: 0.8x consumption
+    # - medium: 1.0x consumption
+    # - high: 1.2x consumption
   
   # Reward scaling
   reward_scale: 10.0            # Divide profit by this for reward normalization
