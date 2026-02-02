@@ -2,6 +2,69 @@
 
 All notable changes to the VWL Simulation project are documented here.
 
+## [4.0.0] - 2026-02-02
+
+### Added
+- **Expanded Action Space** (5 discrete levels per parameter)
+  - Price adjustments: -10%, -5%, 0%, +5%, +10% (previously only 3 levels)
+  - Wage adjustments: -10%, -5%, 0%, +5%, +10%
+  - Total action combinations increased from 9 to 25
+  - More granular control for better learning and strategy development
+  - Hardcoded in `env/economy_env.py` for consistency
+
+- **Console Simulation Runner** (`run_simulation.py`)
+  - Interactive checkpoint selection from trained models
+  - Two simulation modes:
+    - **Seed Mode**: Provide seed → automatic initialization with default ranges
+    - **Manual Mode**: Specify all ranges → system calculates matching seed
+  - Detailed initial state display:
+    - All firm parameters (price, wage, max_employees)
+    - All household states (money, employer, wage)
+  - Detailed final state display with complete simulation results
+  - CSV export with full household tracking:
+    - Every household's money, employer, and wage per timestep
+    - All firm metrics (price, wage, employees, profit)
+    - Aggregate statistics (employment rate, average money)
+  - Seed-based reproducibility for scientific experiments
+
+- **Enhanced Data Export**
+  - `initial_firms_*.csv`: Starting conditions for all firms (with seed)
+  - `initial_households_*.csv`: Starting conditions for all households (with seed)
+  - `simulation_checkpoint*_seed*_*.csv`: Complete timestep data including individual households
+  - `summary_seed*_*.txt`: Simulation summary with reproduction instructions
+  - Timestamped filenames for organization
+  - Seed included in all exports for full traceability
+
+### Changed
+- **Config Cleanup**
+  - Removed obsolete `price_adjustment` and `wage_adjustment` parameters
+  - Action space now fully defined in code (single source of truth)
+  - Added explanatory comments about action space location
+  - Kept only configurable economic parameters (bounds, consumption_rate, reward_scale)
+
+- **Simulation Workflow**
+  - Seed controls all randomization (max_employees, initial prices/wages, household money)
+  - Manual mode generates seed that reproduces exact configuration
+  - Environment reset uses explicit seed for full reproducibility
+  - Initial values set after reset to preserve seed-based max_employees
+
+### Technical Details
+- **Action Space**: `MultiDiscrete([5, 5])` instead of `MultiDiscrete([3, 3])`
+- **Adjustment Mapping**:
+  ```python
+  0: -10%, 1: -5%, 2: 0%, 3: +5%, 4: +10%
+  ```
+- **Seed Workflow**:
+  - Seed provided → use default ranges from config.yaml
+  - No seed → ask for ranges, generate reproducible seed
+  - All randomization (environment + numpy) uses same seed
+
+### Removed
+- Hardcoded adjustment rates from config.yaml (now in code)
+- Confusing parameter inputs (replaced with clear seed-based workflow)
+
+---
+
 ## [3.0.0] - 2026-02-01
 
 ### Added
