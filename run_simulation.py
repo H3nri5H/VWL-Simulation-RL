@@ -86,6 +86,25 @@ def get_simulation_config(checkpoint):
     
     config = {}
     
+    # Random seed for reproducibility
+    print("\n[RANDOM SEED]")
+    print("The seed controls initial randomization of:")
+    print("  - Firm max_employees capacities")
+    print("  - Initial firm prices/wages (within your specified ranges)")
+    print("  - Initial household money (within your specified range)")
+    seed_input = input("\nEnter seed (integer) or press ENTER for random: ").strip()
+    if seed_input:
+        try:
+            config['seed'] = int(seed_input)
+        except ValueError:
+            print("Invalid seed, using random seed.")
+            config['seed'] = np.random.randint(0, 1000000)
+    else:
+        config['seed'] = np.random.randint(0, 1000000)
+    
+    print(f"\n✅ Using seed: {config['seed']}")
+    print("   (Save this number to reproduce exact same simulation later!)")
+    
     # Number of steps
     default_steps = checkpoint['max_steps']
     steps_input = input(f"\nNumber of simulation steps [{default_steps}]: ").strip()
@@ -120,11 +139,13 @@ def get_simulation_config(checkpoint):
     
     return config
 
-def display_initial_state(env, checkpoint):
+def display_initial_state(env, checkpoint, config):
     """Display detailed initial state of all agents"""
     print("\n" + "="*70)
     print("  INITIAL STATE")
     print("="*70)
+    print(f"\n[SEED: {config['seed']}]")
+    print("-" * 70)
     
     # Firms
     print("\n[FIRMS]")
@@ -135,7 +156,7 @@ def display_initial_state(env, checkpoint):
         print(f"Firm {i}:")
         print(f"  - Initial Price: {firm['price']:.2f}")
         print(f"  - Initial Wage: {firm['wage']:.2f}")
-        print(f"  - Max Employees: {firm['max_employees']}")
+        print(f"  - Max Employees: {firm['max_employees']} (randomized by seed)")
         print(f"  - Current Employees: {firm['employees']}")
         print()
     
@@ -150,7 +171,7 @@ def display_initial_state(env, checkpoint):
     
     print("="*70)
 
-def save_initial_state(env, checkpoint, output_dir):
+def save_initial_state(env, checkpoint, config, output_dir):
     """Save initial state to CSV files"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
@@ -163,7 +184,8 @@ def save_initial_state(env, checkpoint, output_dir):
             'firm_id': i,
             'initial_price': firm['price'],
             'initial_wage': firm['wage'],
-            'max_employees': firm['max_employees']
+            'max_employees': firm['max_employees'],
+            'seed': config['seed']
         })
     
     firms_df = pd.DataFrame(firms_data)
@@ -177,7 +199,8 @@ def save_initial_state(env, checkpoint, output_dir):
             'household_id': i,
             'initial_money': hh['money'],
             'initial_employer': hh['employer'] if hh['employer'] else 'None',
-            'initial_wage': hh['wage']
+            'initial_wage': hh['wage'],
+            'seed': config['seed']
         })
     
     households_df = pd.DataFrame(households_data)
@@ -249,27 +272,28 @@ def run_simulation(checkpoint, config):
     }
     
     # Load trained model
-    print("\nLoading model...")
+    print(f"\nLoading model (seed: {config['seed']})...")
     algo = PPO.from_checkpoint(checkpoint['path'])
     env = SimpleEconomyEnv(env_config)
     
-    # Reset environment with RANDOM seed (randomizes max_employees!)
-    random_seed = np.random.randint(0, 1000000)
-    obs, info = env.reset(seed=random_seed)
+    # Reset environment with specified seed
+    obs, info = env.reset(seed=config['seed'])
     
-    # NOW set initial values AFTER reset (so max_employees is already randomized)
+    # Set initial values AFTER reset (so max_employees is already set by seed)
+    # Use same seed for numpy random to ensure reproducibility
+    np.random.seed(config['seed'])
+    
     for i in range(checkpoint['n_firms']):
         firm_id = f"firm_{i}"
         env.firms[firm_id]['price'] = np.random.uniform(*config['price_range'])
         env.firms[firm_id]['wage'] = np.random.uniform(*config['wage_range'])
-        # max_employees is already set by reset() - don't touch it!
     
     for hh in env.households:
         hh['money'] = np.random.uniform(*config['money_range'])
     
     # Display and save initial state
-    display_initial_state(env, checkpoint)
-    save_initial_state(env, checkpoint, results_dir)
+    display_initial_state(env, checkpoint, config)
+    save_initial_state(env, checkpoint, config, results_dir)
     
     input("\nPress ENTER to start simulation...")
     
@@ -293,7 +317,7 @@ def run_simulation(checkpoint, config):
         obs, rewards, dones, truncated, info = env.step(actions)
         
         # Collect data for this step
-        step_data = {'step': step + 1}
+        step_data = {'step': step + 1, 'seed': config['seed']}
         
         # Firm data
         for i in range(checkpoint['n_firms']):
@@ -348,11 +372,11 @@ def run_simulation(checkpoint, config):
     
     return pd.DataFrame(all_data), results_dir
 
-def save_results(df, checkpoint, results_dir):
+def save_results(df, checkpoint, config, results_dir):
     """Save results to CSV"""
     # Generate filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"simulation_checkpoint{checkpoint['iteration']}_{timestamp}.csv"
+    filename = f"simulation_checkpoint{checkpoint['iteration']}_seed{config['seed']}_{timestamp}.csv"
     filepath = results_dir / filename
     
     # Save to CSV
@@ -361,19 +385,25 @@ def save_results(df, checkpoint, results_dir):
     print(f"\n✅ Results saved to: {filepath}")
     
     # Also save summary
-    summary_file = results_dir / f"summary_{timestamp}.txt"
+    summary_file = results_dir / f"summary_seed{config['seed']}_{timestamp}.txt"
     with open(summary_file, 'w') as f:
         f.write(f"Simulation Summary\n")
         f.write(f"="*50 + "\n\n")
         f.write(f"Checkpoint: Iteration {checkpoint['iteration']}\n")
+        f.write(f"Random Seed: {config['seed']} (for reproducibility)\n")
         f.write(f"Firms: {checkpoint['n_firms']}\n")
         f.write(f"Households: {checkpoint['n_households']}\n")
         f.write(f"Steps: {len(df)}\n\n")
+        f.write(f"Configuration:\n")
+        f.write(f"  - Price Range: {config['price_range']}\n")
+        f.write(f"  - Wage Range: {config['wage_range']}\n")
+        f.write(f"  - Money Range: {config['money_range']}\n\n")
         f.write(f"Final Results:\n")
         f.write(f"-"*50 + "\n")
         f.write(df.tail(1).to_string(index=False))
     
     print(f"✅ Summary saved to: {summary_file}")
+    print(f"\n♻️  To reproduce this exact simulation, use seed: {config['seed']}")
     
     return filepath
 
@@ -400,7 +430,7 @@ def main():
     df, results_dir = run_simulation(checkpoint, config)
     
     # Save results
-    save_results(df, checkpoint, results_dir)
+    save_results(df, checkpoint, config, results_dir)
     
     print("\n" + "="*70)
     print("  SIMULATION COMPLETE")
