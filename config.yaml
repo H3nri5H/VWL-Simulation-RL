@@ -28,14 +28,14 @@ initial_ranges:
   # Household starting values
   households:
     money:
-      min: 80.0                 # Minimum starting capital
-      max: 100.0                # Maximum starting capital
+      min: 100.0                # Minimum starting capital (increased from 80)
+      max: 150.0                # Maximum starting capital (increased from 100)
 
 # ============================================================================
 # TRAINING CONFIGURATION
 # ============================================================================
 training:
-  iterations: 20                # Total training iterations
+  iterations: 50                # Total training iterations
   checkpoint_frequency: 10      # Save checkpoint every N iterations
   
   # PPO Hyperparameters
@@ -69,12 +69,12 @@ economy:
     min: 1.0                    # Minimum allowed wage
     max: 20.0                   # Maximum allowed wage
   
-  # Production parameters
+  # Production parameters (REBALANCED)
   production:
     productivity_per_employee: 10.0   # Units produced per employee per step
-    cost_per_unit: 2.0                # Variable cost per unit produced
-    fixed_costs: 15.0                 # Fixed costs per step (rent, utilities)
-    storage_cost_per_unit: 0.5        # Cost to store unsold inventory per unit
+    cost_per_unit: 0.5                # Variable cost per unit (reduced from 2.0)
+    fixed_costs: 5.0                  # Fixed costs per step (reduced from 15.0)
+    storage_cost_per_unit: 0.1        # Storage cost per unit (reduced from 0.5)
   
   # Household behavior
   households:
