@@ -6,7 +6,7 @@ import argparse
 import shutil
 import time
 from pathlib import Path
-from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from env.economy_env import SimpleEconomyEnv
 
 warnings.filterwarnings('ignore', category=DeprecationWarning)
@@ -19,6 +19,30 @@ def load_config():
         with open(config_path, 'r') as f:
             return yaml.safe_load(f)
     return {}
+
+
+def find_latest_checkpoint():
+    """Find the most recent checkpoint to resume from"""
+    checkpoint_dir = Path("./checkpoints")
+    if not checkpoint_dir.exists():
+        return None, 0
+    
+    checkpoints = []
+    for cp_dir in checkpoint_dir.iterdir():
+        if cp_dir.is_dir() and cp_dir.name.startswith('checkpoint_'):
+            metadata_file = cp_dir / "metadata.json"
+            if metadata_file.exists():
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+                    checkpoints.append((str(cp_dir), metadata.get('iteration', 0)))
+    
+    if not checkpoints:
+        return None, 0
+    
+    # Return checkpoint with highest iteration
+    checkpoints.sort(key=lambda x: x[1])
+    latest_path, latest_iter = checkpoints[-1]
+    return latest_path, latest_iter
 
 
 def safe_rmtree(path, max_retries=3):
@@ -48,6 +72,7 @@ def train(
     # Training parameters
     iterations=None,
     checkpoint_freq=None,
+    resume=False,
     # PPO parameters
     learning_rate=None,
     gamma=None,
@@ -70,7 +95,7 @@ def train(
     
     # Training config
     train_cfg = config.get('training', {})
-    iterations = iterations or train_cfg.get('iterations', 50)
+    total_iterations = iterations or train_cfg.get('iterations', 50)
     checkpoint_freq = checkpoint_freq or train_cfg.get('checkpoint_frequency', 10)
     
     # PPO config
@@ -96,15 +121,35 @@ def train(
     print("  VWL SIMULATION - REINFORCEMENT LEARNING TRAINING")
     print("="*70)
     
-    # Clear old data with safe removal
-    print("\n[1/4] Preparing environment...")
-    if safe_rmtree(checkpoint_dir):
-        print("  ✓ Cleared old checkpoints")
-    if safe_rmtree(metrics_dir):
-        print("  ✓ Cleared old metrics")
+    # Check for resume
+    start_iteration = 0
+    resume_checkpoint = None
     
-    os.makedirs(checkpoint_dir, exist_ok=True)
-    os.makedirs(metrics_dir, exist_ok=True)
+    if resume:
+        resume_checkpoint, start_iteration = find_latest_checkpoint()
+        if resume_checkpoint:
+            print(f"\n[RESUME MODE]")
+            print(f"  ✓ Found checkpoint at iteration {start_iteration}")
+            print(f"  ✓ Path: {resume_checkpoint}")
+            print(f"  → Continuing from iteration {start_iteration + 1}")
+        else:
+            print("\n[RESUME MODE]")
+            print("  ⚠ No checkpoint found, starting fresh training")
+            resume = False
+    
+    # Clear old data only if NOT resuming
+    if not resume:
+        print("\n[1/4] Preparing environment...")
+        if safe_rmtree(checkpoint_dir):
+            print("  ✓ Cleared old checkpoints")
+        if safe_rmtree(metrics_dir):
+            print("  ✓ Cleared old metrics")
+        
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        os.makedirs(metrics_dir, exist_ok=True)
+    else:
+        print("\n[1/4] Resuming training...")
+        print("  ✓ Keeping existing checkpoints and metrics")
     
     # Display configuration
     print("\n[2/4] Configuration:")
@@ -113,56 +158,69 @@ def train(
     print(f"    - Households: {env_config['n_households']}")
     print(f"    - Steps per episode: {env_config['max_steps']}")
     print(f"  Training:")
-    print(f"    - Iterations: {iterations}")
+    if resume:
+        print(f"    - Resuming from: {start_iteration}")
+        print(f"    - Target iterations: {total_iterations}")
+        print(f"    - Remaining: {total_iterations - start_iteration}")
+    else:
+        print(f"    - Iterations: {total_iterations}")
     print(f"    - Checkpoint every: {checkpoint_freq} iterations")
     print(f"    - Learning rate: {lr}")
     print(f"    - Workers: {n_workers}")
     print(f"    - GPUs: {n_gpus}")
     
-    # Build PPO config
+    # Build or load PPO algorithm
     print("\n[3/4] Building PPO algorithm...")
-    rllib_config = (
-        PPOConfig()
-        .api_stack(
-            enable_rl_module_and_learner=False,
-            enable_env_runner_and_connector_v2=False,
-        )
-        .environment(
-            env=SimpleEconomyEnv,
-            env_config=env_config,
-        )
-        .framework("torch")
-        .env_runners(
-            num_env_runners=n_workers,
-            rollout_fragment_length=200,
-        )
-        .training(
-            train_batch_size=train_batch,
-            minibatch_size=minibatch,
-            num_epochs=epochs,
-            lr=lr,
-            gamma=gamma_val,
-            lambda_=lambda_val,
-            clip_param=clip_val,
-        )
-        .multi_agent(
-            policies={
-                "shared_policy": (
-                    None,
-                    SimpleEconomyEnv({}).observation_space,
-                    SimpleEconomyEnv({}).action_space,
-                    {},
-                )
-            },
-            policy_mapping_fn=lambda agent_id, *args, **kwargs: "shared_policy",
-        )
-        .resources(
-            num_gpus=n_gpus,
-        )
-    )
     
-    algo = rllib_config.build()
-    print("  ✓ Algorithm ready")
+    if resume and resume_checkpoint:
+        # Load from checkpoint
+        print(f"  Loading checkpoint: {resume_checkpoint}")
+        algo = PPO.from_checkpoint(resume_checkpoint)
+        print("  ✓ Algorithm loaded from checkpoint")
+    else:
+        # Build fresh
+        rllib_config = (
+            PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
+            .environment(
+                env=SimpleEconomyEnv,
+                env_config=env_config,
+            )
+            .framework("torch")
+            .env_runners(
+                num_env_runners=n_workers,
+                rollout_fragment_length=200,
+            )
+            .training(
+                train_batch_size=train_batch,
+                minibatch_size=minibatch,
+                num_epochs=epochs,
+                lr=lr,
+                gamma=gamma_val,
+                lambda_=lambda_val,
+                clip_param=clip_val,
+            )
+            .multi_agent(
+                policies={
+                    "shared_policy": (
+                        None,
+                        SimpleEconomyEnv({}).observation_space,
+                        SimpleEconomyEnv({}).action_space,
+                        {},
+                    )
+                },
+                policy_mapping_fn=lambda agent_id, *args, **kwargs: "shared_policy",
+            )
+            .resources(
+                num_gpus=n_gpus,
+            )
+        )
+        
+        algo = rllib_config.build()
+        print("  ✓ Algorithm ready")
     
     # Training loop
     print("\n[4/4] Training...")
@@ -170,7 +228,7 @@ def train(
     print(f"{'Iter':<6} {'Reward':<12} {'Min':<10} {'Max':<10} {'Ep Len':<10}")
     print("-"*70)
     
-    for i in range(iterations):
+    for i in range(start_iteration, total_iterations):
         result = algo.train()
         
         env_runners = result.get('env_runners', {})
@@ -182,7 +240,7 @@ def train(
         print(f"{i+1:<6} {reward_mean:<12.2f} {reward_min:<10.2f} {reward_max:<10.2f} {episode_len:<10.0f}")
         
         # Checkpoint?
-        should_checkpoint = (i + 1) % checkpoint_freq == 0 or (i + 1) == iterations
+        should_checkpoint = (i + 1) % checkpoint_freq == 0 or (i + 1) == total_iterations
         
         if should_checkpoint:
             # Save metrics
@@ -213,7 +271,7 @@ def train(
             
             # Save metadata
             metadata_file = os.path.join(checkpoint_path, "metadata.json")
-            is_final = (i + 1) == iterations
+            is_final = (i + 1) == total_iterations
             
             metadata = {
                 'iteration': i + 1,
@@ -247,6 +305,9 @@ Examples:
   # Use defaults from config.yaml
   python train.py
   
+  # Resume from last checkpoint
+  python train.py --resume
+  
   # Override specific parameters
   python train.py --n-firms 5 --n-households 20 --iterations 100
   
@@ -265,6 +326,7 @@ Examples:
     train_group = parser.add_argument_group('Training')
     train_group.add_argument("--iterations", type=int, help="Total training iterations")
     train_group.add_argument("--checkpoint-freq", type=int, help="Checkpoint frequency")
+    train_group.add_argument("--resume", action='store_true', help="Resume from latest checkpoint")
     
     # PPO parameters
     ppo_group = parser.add_argument_group('PPO Hyperparameters')
@@ -286,6 +348,7 @@ Examples:
         max_steps=args.max_steps,
         iterations=args.iterations,
         checkpoint_freq=args.checkpoint_freq,
+        resume=args.resume,
         learning_rate=args.lr,
         gamma=args.gamma,
         lambda_=args.lambda_,
