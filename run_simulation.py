@@ -6,6 +6,7 @@ from datetime import datetime
 from ray.rllib.algorithms.ppo import PPO
 from env.economy_env import SimpleEconomyEnv
 import warnings
+import numpy as np
 
 warnings.filterwarnings('ignore')
 
@@ -252,15 +253,16 @@ def run_simulation(checkpoint, config):
     algo = PPO.from_checkpoint(checkpoint['path'])
     env = SimpleEconomyEnv(env_config)
     
-    # Reset environment
-    obs, info = env.reset()
+    # Reset environment with RANDOM seed (randomizes max_employees!)
+    random_seed = np.random.randint(0, 1000000)
+    obs, info = env.reset(seed=random_seed)
     
-    # Set initial values
-    import numpy as np
+    # NOW set initial values AFTER reset (so max_employees is already randomized)
     for i in range(checkpoint['n_firms']):
         firm_id = f"firm_{i}"
         env.firms[firm_id]['price'] = np.random.uniform(*config['price_range'])
         env.firms[firm_id]['wage'] = np.random.uniform(*config['wage_range'])
+        # max_employees is already set by reset() - don't touch it!
     
     for hh in env.households:
         hh['money'] = np.random.uniform(*config['money_range'])
@@ -300,6 +302,7 @@ def run_simulation(checkpoint, config):
             step_data[f'firm_{i}_price'] = firm['price']
             step_data[f'firm_{i}_wage'] = firm['wage']
             step_data[f'firm_{i}_employees'] = firm['employees']
+            step_data[f'firm_{i}_max_employees'] = firm['max_employees']
             step_data[f'firm_{i}_profit'] = firm['profit']
         
         # Individual household data
