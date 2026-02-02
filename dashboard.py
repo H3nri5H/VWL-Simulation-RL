@@ -16,36 +16,61 @@ st.set_page_config(page_title="VWL Simulation Dashboard", layout="wide")
 
 def load_checkpoints():
     """Load all available checkpoints"""
-    checkpoint_dir = Path("./checkpoints").absolute()
+    checkpoint_base = Path("./checkpoints").absolute()
     
-    if not checkpoint_dir.exists():
+    if not checkpoint_base.exists():
         return []
     
-    # Ray saves directly to ./checkpoints/
-    metadata_file = checkpoint_dir / "policies" / "metadata.json"
-    rllib_config_file = checkpoint_dir / "rllib_checkpoint.json"
+    checkpoints = []
     
-    if metadata_file.exists() and rllib_config_file.exists():
-        with open(metadata_file, 'r') as f:
-            metadata = json.load(f)
+    # Ray 2.52 structure: checkpoints/PPO_SimpleEconomyEnv_xxxxx/checkpoint_000xxx/
+    for algo_dir in checkpoint_base.iterdir():
+        if not algo_dir.is_dir():
+            continue
         
-        with open(rllib_config_file, 'r') as f:
-            rllib_config = json.load(f)
-        
-        # Extract env_config from checkpoint
-        env_config = rllib_config.get('env_config', {})
-        
-        return [{
-            'path': str(checkpoint_dir),
-            'iteration': metadata.get('iteration', 0),
-            'reward': metadata.get('reward_mean', 0.0),
-            'is_favorite': metadata.get('is_favorite', False),
-            'n_firms': env_config.get('n_firms', 2),
-            'n_households': env_config.get('n_households', 10),
-            'max_steps': env_config.get('max_steps', 100),
-        }]
+        # Look for checkpoint folders
+        for checkpoint_dir in algo_dir.iterdir():
+            if not checkpoint_dir.is_dir() or not checkpoint_dir.name.startswith('checkpoint_'):
+                continue
+            
+            # Check if valid checkpoint (has algorithm_state.pkl or policy_state.pkl)
+            has_algo_state = (checkpoint_dir / "algorithm_state.pkl").exists()
+            has_policy_state = (checkpoint_dir / "policies" / "shared_policy").exists()
+            
+            if not (has_algo_state or has_policy_state):
+                continue
+            
+            # Load metadata if exists
+            metadata_file = checkpoint_dir / "metadata.json"
+            if metadata_file.exists():
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+            else:
+                metadata = {}
+            
+            # Try to load env_config from rllib_checkpoint.json
+            rllib_config_file = checkpoint_dir / "rllib_checkpoint.json"
+            if rllib_config_file.exists():
+                with open(rllib_config_file, 'r') as f:
+                    rllib_config = json.load(f)
+                    env_config = rllib_config.get('env_config', {})
+            else:
+                env_config = {}
+            
+            checkpoints.append({
+                'path': str(checkpoint_dir),
+                'iteration': metadata.get('iteration', 0),
+                'reward': metadata.get('reward_mean', 0.0),
+                'is_favorite': metadata.get('is_favorite', False),
+                'n_firms': env_config.get('n_firms', 2),
+                'n_households': env_config.get('n_households', 10),
+                'max_steps': env_config.get('max_steps', 100),
+            })
     
-    return []
+    # Sort by iteration
+    checkpoints.sort(key=lambda x: x['iteration'])
+    
+    return checkpoints
 
 def run_simulation(checkpoint_path, n_firms, n_households, n_steps, 
                    price_range, wage_range, money_range):
@@ -126,6 +151,8 @@ checkpoints = load_checkpoints()
 if not checkpoints:
     st.sidebar.error("❌ No trained checkpoints found!")
     st.sidebar.info("Run training first:\n```bash\npython train.py --iterations 20\n```")
+    st.sidebar.markdown("**Expected folder structure:**")
+    st.sidebar.code("checkpoints/\n  PPO_SimpleEconomyEnv_xxxxx/\n    checkpoint_000010/\n    checkpoint_000020/\n    ...")
     st.stop()
 
 # Checkpoint selection
@@ -213,7 +240,7 @@ with tab1:
                 yaxis_title="Price",
                 height=300
             )
-            st.plotly_chart(fig_price, width='stretch')
+            st.plotly_chart(fig_price, use_container_width=True)
             
             # Profit chart
             fig_profit = go.Figure()
@@ -229,7 +256,7 @@ with tab1:
                 yaxis_title="Profit",
                 height=300
             )
-            st.plotly_chart(fig_profit, width='stretch')
+            st.plotly_chart(fig_profit, use_container_width=True)
         
         with col2:
             # Wage chart
@@ -246,7 +273,7 @@ with tab1:
                 yaxis_title="Wage",
                 height=300
             )
-            st.plotly_chart(fig_wage, width='stretch')
+            st.plotly_chart(fig_wage, use_container_width=True)
             
             # Employees chart
             fig_emp = go.Figure()
@@ -262,7 +289,7 @@ with tab1:
                 yaxis_title="Employees",
                 height=300
             )
-            st.plotly_chart(fig_emp, width='stretch')
+            st.plotly_chart(fig_emp, use_container_width=True)
         
         st.divider()
 
@@ -288,7 +315,7 @@ with tab2:
         yaxis_title="Money",
         height=400
     )
-    st.plotly_chart(fig_money, width='stretch')
+    st.plotly_chart(fig_money, use_container_width=True)
     
     # Employment rate
     employment_rate = [sum(st.session_state['household_data'][i]['employed'][step] 
@@ -309,7 +336,7 @@ with tab2:
         yaxis_title="Employment %",
         height=400
     )
-    st.plotly_chart(fig_emp, width='stretch')
+    st.plotly_chart(fig_emp, use_container_width=True)
 
 with tab3:
     st.header("Economic Summary")
@@ -347,4 +374,4 @@ with tab3:
         yaxis_title="Price",
         height=500
     )
-    st.plotly_chart(fig_all, width='stretch')
+    st.plotly_chart(fig_all, use_container_width=True)
