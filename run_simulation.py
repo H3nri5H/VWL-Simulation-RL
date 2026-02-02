@@ -119,11 +119,126 @@ def get_simulation_config(checkpoint):
     
     return config
 
+def display_initial_state(env, checkpoint):
+    """Display detailed initial state of all agents"""
+    print("\n" + "="*70)
+    print("  INITIAL STATE")
+    print("="*70)
+    
+    # Firms
+    print("\n[FIRMS]")
+    print("-" * 70)
+    for i in range(checkpoint['n_firms']):
+        firm_id = f"firm_{i}"
+        firm = env.firms[firm_id]
+        print(f"Firm {i}:")
+        print(f"  - Initial Price: {firm['price']:.2f}")
+        print(f"  - Initial Wage: {firm['wage']:.2f}")
+        print(f"  - Max Employees: {firm['max_employees']}")
+        print(f"  - Current Employees: {firm['employees']}")
+        print()
+    
+    # Households
+    print("\n[HOUSEHOLDS]")
+    print("-" * 70)
+    for i, hh in enumerate(env.households):
+        employer_str = hh['employer'] if hh['employer'] else 'Unemployed'
+        wage_str = f"{hh['wage']:.2f}" if hh['employer'] else 'N/A'
+        print(f"Household {i:2d}: Money={hh['money']:.2f} | "
+              f"Employer={employer_str:8s} | Wage={wage_str:>6s}")
+    
+    print("="*70)
+
+def save_initial_state(env, checkpoint, output_dir):
+    """Save initial state to CSV files"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Firms initial state
+    firms_data = []
+    for i in range(checkpoint['n_firms']):
+        firm_id = f"firm_{i}"
+        firm = env.firms[firm_id]
+        firms_data.append({
+            'firm_id': i,
+            'initial_price': firm['price'],
+            'initial_wage': firm['wage'],
+            'max_employees': firm['max_employees']
+        })
+    
+    firms_df = pd.DataFrame(firms_data)
+    firms_file = output_dir / f"initial_firms_{timestamp}.csv"
+    firms_df.to_csv(firms_file, index=False)
+    
+    # Households initial state
+    households_data = []
+    for i, hh in enumerate(env.households):
+        households_data.append({
+            'household_id': i,
+            'initial_money': hh['money'],
+            'initial_employer': hh['employer'] if hh['employer'] else 'None',
+            'initial_wage': hh['wage']
+        })
+    
+    households_df = pd.DataFrame(households_data)
+    households_file = output_dir / f"initial_households_{timestamp}.csv"
+    households_df.to_csv(households_file, index=False)
+    
+    print(f"\n✅ Initial state saved:")
+    print(f"   - Firms: {firms_file}")
+    print(f"   - Households: {households_file}")
+
+def display_final_state(env, checkpoint):
+    """Display detailed final state of all agents"""
+    print("\n" + "="*70)
+    print("  FINAL STATE")
+    print("="*70)
+    
+    # Firms
+    print("\n[FIRMS]")
+    print("-" * 70)
+    for i in range(checkpoint['n_firms']):
+        firm_id = f"firm_{i}"
+        firm = env.firms[firm_id]
+        print(f"Firm {i}:")
+        print(f"  - Final Price: {firm['price']:.2f}")
+        print(f"  - Final Wage: {firm['wage']:.2f}")
+        print(f"  - Employees: {firm['employees']}/{firm['max_employees']}")
+        print(f"  - Final Profit: {firm['profit']:.2f}")
+        print(f"  - Revenue: {firm['revenue']:.2f}")
+        print(f"  - Costs: {firm['costs']:.2f}")
+        print()
+    
+    # Households
+    print("\n[HOUSEHOLDS]")
+    print("-" * 70)
+    employed_count = 0
+    total_money = 0.0
+    
+    for i, hh in enumerate(env.households):
+        employer_str = hh['employer'] if hh['employer'] else 'Unemployed'
+        wage_str = f"{hh['wage']:.2f}" if hh['employer'] else 'N/A'
+        print(f"Household {i:2d}: Money={hh['money']:.2f} | "
+              f"Employer={employer_str:8s} | Wage={wage_str:>6s}")
+        
+        if hh['employer']:
+            employed_count += 1
+        total_money += hh['money']
+    
+    print("\n[SUMMARY]")
+    print("-" * 70)
+    print(f"Employment Rate: {(employed_count/len(env.households)*100):.1f}%")
+    print(f"Average Household Money: {total_money/len(env.households):.2f}")
+    print("="*70)
+
 def run_simulation(checkpoint, config):
     """Run the simulation and collect data"""
     print("\n" + "="*70)
     print("  RUNNING SIMULATION")
     print("="*70)
+    
+    # Create results directory
+    results_dir = Path("./simulation_results")
+    results_dir.mkdir(exist_ok=True)
     
     # Setup environment
     env_config = {
@@ -150,10 +265,16 @@ def run_simulation(checkpoint, config):
     for hh in env.households:
         hh['money'] = np.random.uniform(*config['money_range'])
     
+    # Display and save initial state
+    display_initial_state(env, checkpoint)
+    save_initial_state(env, checkpoint, results_dir)
+    
+    input("\nPress ENTER to start simulation...")
+    
     # Storage for all steps
     all_data = []
     
-    print("\nSimulation starting...\n")
+    print("\nSimulation running...\n")
     print("="*70)
     
     done = False
@@ -181,7 +302,13 @@ def run_simulation(checkpoint, config):
             step_data[f'firm_{i}_employees'] = firm['employees']
             step_data[f'firm_{i}_profit'] = firm['profit']
         
-        # Aggregate household data
+        # Individual household data
+        for i, hh in enumerate(env.households):
+            step_data[f'hh_{i}_money'] = hh['money']
+            step_data[f'hh_{i}_employer'] = hh['employer'] if hh['employer'] else 'None'
+            step_data[f'hh_{i}_wage'] = hh['wage']
+        
+        # Aggregate stats
         total_money = sum(hh['money'] for hh in env.households)
         employed = sum(1 for hh in env.households if hh['employer'] is not None)
         step_data['avg_household_money'] = total_money / len(env.households)
@@ -200,7 +327,7 @@ def run_simulation(checkpoint, config):
                 firm = env.firms[firm_id]
                 print(f"Firm {i}: Price={firm['price']:.2f} | "
                       f"Wage={firm['wage']:.2f} | "
-                      f"Employees={firm['employees']} | "
+                      f"Employees={firm['employees']}/{firm['max_employees']} | "
                       f"Profit={firm['profit']:.2f}")
             
             # Household stats
@@ -211,16 +338,15 @@ def run_simulation(checkpoint, config):
         done = dones.get('__all__', False)
         step += 1
     
+    # Display final state
+    display_final_state(env, checkpoint)
+    
     algo.stop()
     
-    return pd.DataFrame(all_data)
+    return pd.DataFrame(all_data), results_dir
 
-def save_results(df, checkpoint):
+def save_results(df, checkpoint, results_dir):
     """Save results to CSV"""
-    # Create results directory
-    results_dir = Path("./simulation_results")
-    results_dir.mkdir(exist_ok=True)
-    
     # Generate filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"simulation_checkpoint{checkpoint['iteration']}_{timestamp}.csv"
@@ -268,10 +394,10 @@ def main():
     config = get_simulation_config(checkpoint)
     
     # Run simulation
-    df = run_simulation(checkpoint, config)
+    df, results_dir = run_simulation(checkpoint, config)
     
     # Save results
-    save_results(df, checkpoint)
+    save_results(df, checkpoint, results_dir)
     
     print("\n" + "="*70)
     print("  SIMULATION COMPLETE")
