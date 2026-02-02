@@ -183,31 +183,32 @@ def train(
                     }
                 }, f)
             
-            # Save checkpoint
+            # Save checkpoint - Ray creates subdirectory automatically
             checkpoint_result = algo.save(checkpoint_dir)
-            checkpoint_path = str(checkpoint_result.checkpoint.path)
             
-            # Save metadata
-            if os.path.exists(checkpoint_path) and os.path.isdir(checkpoint_path):
-                metadata_file = os.path.join(checkpoint_path, "metadata.json")
-                is_final = (i + 1) == iterations
-                
-                metadata = {
-                    'iteration': i + 1,
-                    'reward_mean': reward_mean,
-                    'episode_len_mean': episode_len,
-                    'timestamp': result.get('timestamp', 0),
-                    'is_favorite': is_final,
-                    'checkpoint_path': checkpoint_path
-                }
-                
-                with open(metadata_file, 'w') as f:
-                    json.dump(metadata, f, indent=2)
-                
-                if is_final:
-                    print(f"\n  ⭐ Checkpoint {i+1} saved (marked as favorite)")
-                else:
-                    print(f"\n  💾 Checkpoint {i+1} saved")
+            # Get the actual checkpoint path Ray created
+            checkpoint_path = checkpoint_result.checkpoint.path
+            
+            # Save metadata into the checkpoint folder Ray created
+            metadata_file = os.path.join(checkpoint_path, "metadata.json")
+            is_final = (i + 1) == iterations
+            
+            metadata = {
+                'iteration': i + 1,
+                'reward_mean': reward_mean,
+                'episode_len_mean': episode_len,
+                'timestamp': result.get('timestamp', 0),
+                'is_favorite': is_final,
+                'checkpoint_path': str(checkpoint_path)
+            }
+            
+            with open(metadata_file, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            
+            if is_final:
+                print(f"\n  ⭐ Checkpoint {i+1} saved to: {checkpoint_path}")
+            else:
+                print(f"\n  💾 Checkpoint {i+1} saved to: {checkpoint_path}")
     
     print("-"*70)
     print("\n✅ Training complete!\n")
