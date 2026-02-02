@@ -36,6 +36,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         
         # Economic parameters
         econ_cfg = default_config.get('economy', {})
+        
         # Adjustment rates for each action level
         self.adjustment_rates = {
             0: -0.10,  # -10%
@@ -45,9 +46,23 @@ class SimpleEconomyEnv(MultiAgentEnv):
             4: 0.10,   # +10%
         }
         
-        self.consumption_rate = econ_cfg.get('consumption_rate', 0.6)
+        # Production parameters
+        prod_cfg = econ_cfg.get('production', {})
+        self.productivity_per_employee = prod_cfg.get('productivity_per_employee', 10.0)
+        self.production_cost_per_unit = prod_cfg.get('cost_per_unit', 2.0)
+        self.fixed_costs = prod_cfg.get('fixed_costs', 15.0)
+        self.storage_cost_per_unit = prod_cfg.get('storage_cost_per_unit', 0.5)
+        
+        # Household parameters
+        hh_cfg = econ_cfg.get('households', {})
+        self.consumption_rate = hh_cfg.get('consumption_rate', 0.6)
+        self.utility_price_weight = hh_cfg.get('utility_price_weight', 1.0)
+        self.utility_quality_weight = hh_cfg.get('utility_quality_weight', 0.5)
+        
+        # Reward parameters
         self.reward_scale = econ_cfg.get('reward_scale', 10.0)
         
+        # Bounds
         price_bounds = econ_cfg.get('price_bounds', {'min': 1.0, 'max': 50.0})
         wage_bounds = econ_cfg.get('wage_bounds', {'min': 1.0, 'max': 20.0})
         self.price_min = price_bounds['min']
@@ -57,12 +72,13 @@ class SimpleEconomyEnv(MultiAgentEnv):
         
         self._agent_ids = set(f"firm_{i}" for i in range(self.n_firms))
         
-        # Improved Observation Space:
-        # [own_price, own_wage, own_employees, own_profit,
+        # Expanded Observation Space:
+        # [own_price, own_wage, own_employees, own_inventory, own_profit,
         #  market_avg_price, market_min_price, market_max_price,
         #  market_avg_wage, market_min_wage, market_max_wage,
-        #  total_employed, unemployment_rate, timestep]
-        self._obs_space = Box(low=-100.0, high=100.0, shape=(13,), dtype=np.float32)
+        #  total_employed, unemployment_rate, 
+        #  avg_household_money, timestep]
+        self._obs_space = Box(low=-100.0, high=100.0, shape=(15,), dtype=np.float32)
         
         # Action: [price_change, wage_change]
         # Each can be: 0=-10%, 1=-5%, 2=0%, 3=+5%, 4=+10%
@@ -98,9 +114,12 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 'wage': np.random.uniform(wage_range['min'], wage_range['max']),
                 'max_employees': np.random.randint(emp_range['min'], emp_range['max'] + 1),
                 'employees': 0,
+                'inventory': 0.0,  # NEW: Stock of unsold goods
+                'production': 0.0,  # NEW: Production this step
                 'profit': 0.0,
                 'revenue': 0.0,
                 'costs': 0.0,
+                'quality': np.random.uniform(0.5, 1.0),  # NEW: Product quality (perceived)
             }
         
         self.households = []
@@ -109,6 +128,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 'money': np.random.uniform(money_range['min'], money_range['max']),
                 'employer': None,
                 'wage': 0.0,
+                'wealth_type': np.random.choice(['low', 'medium', 'high'], p=[0.3, 0.5, 0.2]),  # NEW: Household type
             })
         
         self.timestep = 0
@@ -171,7 +191,18 @@ class SimpleEconomyEnv(MultiAgentEnv):
                     household['money'] += firm['wage']  # Get paid
                     break
         
-        # Phase 3: Goods market - Households shop
+        # Phase 3: Production
+        for agent_id in self._agent_ids:
+            firm = self.firms[agent_id]
+            
+            # Production based on employees
+            production = firm['employees'] * self.productivity_per_employee
+            firm['production'] = production
+            
+            # Add to inventory
+            firm['inventory'] += production
+        
+        # Phase 4: Goods market - Households shop with utility maximization
         total_demand = {agent_id: 0.0 for agent_id in self._agent_ids}
         
         for household in self.households:
@@ -179,24 +210,65 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 continue
             
             budget = household['money'] * self.consumption_rate
-            prices = {aid: self.firms[aid]['price'] for aid in self._agent_ids}
-            cheapest = min(prices, key=prices.get)
             
-            quantity = budget / prices[cheapest]
-            total_demand[cheapest] += quantity
-            household['money'] -= quantity * prices[cheapest]
+            # Adjust budget based on wealth type
+            if household['wealth_type'] == 'low':
+                budget *= 0.8  # Spend less
+            elif household['wealth_type'] == 'high':
+                budget *= 1.2  # Spend more
+            
+            # Calculate utility for each firm's product
+            utilities = {}
+            for firm_id in self._agent_ids:
+                firm = self.firms[firm_id]
+                price = firm['price']
+                quality = firm['quality']
+                
+                # Utility = Quality / Price (with weights)
+                # Higher quality OR lower price = higher utility
+                if price > 0:
+                    utility = (quality * self.utility_quality_weight) / (price * self.utility_price_weight)
+                    utilities[firm_id] = utility
+                else:
+                    utilities[firm_id] = 0.0
+            
+            # Choose firm with highest utility
+            if utilities:
+                best_firm = max(utilities, key=utilities.get)
+                firm = self.firms[best_firm]
+                
+                # How much can household afford?
+                quantity = budget / firm['price'] if firm['price'] > 0 else 0
+                
+                # But firm can only sell what's in inventory
+                quantity = min(quantity, firm['inventory'])
+                
+                if quantity > 0:
+                    total_demand[best_firm] += quantity
+                    actual_cost = quantity * firm['price']
+                    household['money'] -= actual_cost
+                    firm['inventory'] -= quantity
         
-        # Phase 4: Calculate firm profits and rewards
+        # Phase 5: Calculate firm profits and rewards
         rewards = {}
         for agent_id in self._agent_ids:
             firm = self.firms[agent_id]
             
+            # Revenue from sales
             revenue = total_demand[agent_id] * firm['price']
+            
+            # Costs:
             wage_costs = firm['employees'] * firm['wage']
-            profit = revenue - wage_costs
+            production_costs = firm['production'] * self.production_cost_per_unit
+            storage_costs = firm['inventory'] * self.storage_cost_per_unit
+            fixed_costs = self.fixed_costs
+            
+            total_costs = wage_costs + production_costs + storage_costs + fixed_costs
+            
+            profit = revenue - total_costs
             
             firm['revenue'] = revenue
-            firm['costs'] = wage_costs
+            firm['costs'] = total_costs
             firm['profit'] = profit
             
             # Reward is scaled profit
@@ -215,6 +287,8 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 'revenue': self.firms[agent_id]['revenue'],
                 'costs': self.firms[agent_id]['costs'],
                 'employees': self.firms[agent_id]['employees'],
+                'inventory': self.firms[agent_id]['inventory'],
+                'production': self.firms[agent_id]['production'],
             } 
             for agent_id in self._agent_ids
         }
@@ -242,10 +316,14 @@ class SimpleEconomyEnv(MultiAgentEnv):
         total_employed = sum(f['employees'] for f in self.firms.values())
         unemployment_rate = 1.0 - (total_employed / self.n_households)
         
+        # Household statistics
+        avg_household_money = np.mean([hh['money'] for hh in self.households])
+        
         obs = np.array([
             firm['price'],
             firm['wage'],
             firm['employees'],
+            firm['inventory'],
             firm['profit'] / self.reward_scale,
             market_avg_price,
             market_min_price,
@@ -255,6 +333,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
             market_max_wage,
             total_employed,
             unemployment_rate,
+            avg_household_money,
             self.timestep / self.max_steps,
         ], dtype=np.float32)
         
