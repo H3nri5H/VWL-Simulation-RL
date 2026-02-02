@@ -5,10 +5,11 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from pathlib import Path
+import ray
 from ray.rllib.algorithms.ppo import PPO
 from env.economy_env import SimpleEconomyEnv
 
-# Suppress deprecation warnings
+# Suppress warnings
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 os.environ['PYTHONWARNINGS'] = 'ignore::DeprecationWarning'
 
@@ -73,69 +74,84 @@ def run_simulation(checkpoint_path, n_firms, n_households, n_steps,
     
     checkpoint_path = os.path.abspath(checkpoint_path)
     
-    env_config = {
-        'n_firms': n_firms,
-        'n_households': n_households,
-        'max_steps': n_steps,
-    }
+    # Initialize Ray if not already running (with local mode for Streamlit)
+    if not ray.is_initialized():
+        ray.init(
+            ignore_reinit_error=True,
+            include_dashboard=False,
+            num_cpus=1,
+            log_to_driver=False,
+        )
     
-    # Restore algorithm from checkpoint
-    algo = PPO.from_checkpoint(checkpoint_path)
-    
-    # Create environment with custom initial ranges
-    env = SimpleEconomyEnv(env_config)
-    
-    # Storage for results
-    firm_data = {i: {'prices': [], 'wages': [], 'profits': [], 'employees': []} 
-                 for i in range(n_firms)}
-    household_data = {i: {'money': [], 'employed': []} 
-                      for i in range(n_households)}
-    
-    obs, info = env.reset()
-    
-    # Override initial values with custom ranges
-    import numpy as np
-    for i in range(n_firms):
-        firm_id = f"firm_{i}"
-        env.firms[firm_id]['price'] = np.random.uniform(price_range[0], price_range[1])
-        env.firms[firm_id]['wage'] = np.random.uniform(wage_range[0], wage_range[1])
-    
-    for hh in env.households:
-        hh['money'] = np.random.uniform(money_range[0], money_range[1])
-    
-    done = False
-    step = 0
-    
-    while not done and step < n_steps:
-        # Get actions from trained model
-        actions = {}
-        for agent_id in obs.keys():
-            action, _, _ = algo.get_policy("shared_policy").compute_single_action(obs[agent_id])
-            actions[agent_id] = action
+    try:
+        env_config = {
+            'n_firms': n_firms,
+            'n_households': n_households,
+            'max_steps': n_steps,
+        }
         
-        # Step environment
-        obs, rewards, dones, truncated, info = env.step(actions)
+        # Restore algorithm from checkpoint
+        algo = PPO.from_checkpoint(checkpoint_path)
         
-        # Record firm data
+        # Create environment with custom initial ranges
+        env = SimpleEconomyEnv(env_config)
+        
+        # Storage for results
+        firm_data = {i: {'prices': [], 'wages': [], 'profits': [], 'employees': []} 
+                     for i in range(n_firms)}
+        household_data = {i: {'money': [], 'employed': []} 
+                          for i in range(n_households)}
+        
+        obs, info = env.reset()
+        
+        # Override initial values with custom ranges
+        import numpy as np
         for i in range(n_firms):
             firm_id = f"firm_{i}"
-            firm = env.firms[firm_id]
-            firm_data[i]['prices'].append(firm['price'])
-            firm_data[i]['wages'].append(firm['wage'])
-            firm_data[i]['profits'].append(firm['profit'])
-            firm_data[i]['employees'].append(firm['employees'])
+            env.firms[firm_id]['price'] = np.random.uniform(price_range[0], price_range[1])
+            env.firms[firm_id]['wage'] = np.random.uniform(wage_range[0], wage_range[1])
         
-        # Record household data
-        for i, hh in enumerate(env.households):
-            household_data[i]['money'].append(hh['money'])
-            household_data[i]['employed'].append(1 if hh['employer'] is not None else 0)
+        for hh in env.households:
+            hh['money'] = np.random.uniform(money_range[0], money_range[1])
         
-        done = dones.get('__all__', False)
-        step += 1
-    
-    algo.stop()
-    
-    return firm_data, household_data
+        done = False
+        step = 0
+        
+        while not done and step < n_steps:
+            # Get actions from trained model
+            actions = {}
+            for agent_id in obs.keys():
+                action, _, _ = algo.get_policy("shared_policy").compute_single_action(obs[agent_id])
+                actions[agent_id] = action
+            
+            # Step environment
+            obs, rewards, dones, truncated, info = env.step(actions)
+            
+            # Record firm data
+            for i in range(n_firms):
+                firm_id = f"firm_{i}"
+                firm = env.firms[firm_id]
+                firm_data[i]['prices'].append(firm['price'])
+                firm_data[i]['wages'].append(firm['wage'])
+                firm_data[i]['profits'].append(firm['profit'])
+                firm_data[i]['employees'].append(firm['employees'])
+            
+            # Record household data
+            for i, hh in enumerate(env.households):
+                household_data[i]['money'].append(hh['money'])
+                household_data[i]['employed'].append(1 if hh['employer'] is not None else 0)
+            
+            done = dones.get('__all__', False)
+            step += 1
+        
+        algo.stop()
+        
+        return firm_data, household_data
+        
+    finally:
+        # Clean shutdown
+        if ray.is_initialized():
+            ray.shutdown()
 
 # Sidebar
 st.sidebar.title("🎮 Simulation Control")
@@ -187,20 +203,25 @@ money_max = st.sidebar.number_input("Max Money", min_value=0.0, max_value=200.0,
 # Run button
 if st.sidebar.button("🚀 Start Simulation", type="primary"):
     with st.spinner("Running simulation..."):
-        firm_data, household_data = run_simulation(
-            selected_checkpoint['path'],
-            selected_checkpoint['n_firms'],
-            selected_checkpoint['n_households'],
-            selected_checkpoint['max_steps'],
-            (price_min, price_max),
-            (wage_min, wage_max),
-            (money_min, money_max)
-        )
-        st.session_state['firm_data'] = firm_data
-        st.session_state['household_data'] = household_data
-        st.session_state['n_steps'] = selected_checkpoint['max_steps']
-        st.session_state['n_firms'] = selected_checkpoint['n_firms']
-        st.success("✅ Simulation complete!")
+        try:
+            firm_data, household_data = run_simulation(
+                selected_checkpoint['path'],
+                selected_checkpoint['n_firms'],
+                selected_checkpoint['n_households'],
+                selected_checkpoint['max_steps'],
+                (price_min, price_max),
+                (wage_min, wage_max),
+                (money_min, money_max)
+            )
+            st.session_state['firm_data'] = firm_data
+            st.session_state['household_data'] = household_data
+            st.session_state['n_steps'] = selected_checkpoint['max_steps']
+            st.session_state['n_firms'] = selected_checkpoint['n_firms']
+            st.success("✅ Simulation complete!")
+        except Exception as e:
+            st.error(f"❌ Simulation failed: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
 
 # Main content
 st.title("📊 VWL Simulation Dashboard")
