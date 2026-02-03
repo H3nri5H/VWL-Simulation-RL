@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import yaml
 import warnings
@@ -9,7 +10,17 @@ from pathlib import Path
 from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from env.economy_env import SimpleEconomyEnv
 
+# Suppress warnings and verbose output
 warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore')
+os.environ['RAY_DEDUP_LOGS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+# Redirect Ray's verbose output
+import logging
+logging.getLogger('ray').setLevel(logging.ERROR)
+logging.getLogger('ray.tune').setLevel(logging.ERROR)
+logging.getLogger('ray.rllib').setLevel(logging.ERROR)
 
 
 def load_config():
@@ -19,7 +30,7 @@ def load_config():
         raise FileNotFoundError(
             "config.yaml not found! Please create a config.yaml file with your training parameters."
         )
-    with open(config_path, 'r', encoding='utf-8') as f:  # FIX: Added UTF-8 encoding
+    with open(config_path, 'r', encoding='utf-8') as f:
         return yaml.safe_load(f)
 
 
@@ -36,13 +47,11 @@ def find_latest_checkpoint():
             if metadata_file.exists():
                 with open(metadata_file, 'r') as f:
                     metadata = json.load(f)
-                    # Use absolute path!
                     checkpoints.append((os.path.abspath(str(cp_dir)), metadata.get('iteration', 0)))
     
     if not checkpoints:
         return None, 0
     
-    # Return checkpoint with highest iteration
     checkpoints.sort(key=lambda x: x[1])
     latest_path, latest_iter = checkpoints[-1]
     return latest_path, latest_iter
@@ -57,26 +66,18 @@ def safe_rmtree(path, max_retries=3):
             return True
         except PermissionError:
             if attempt < max_retries - 1:
-                time.sleep(0.5)  # Wait a bit
+                time.sleep(0.5)
                 continue
             else:
-                # Last attempt failed, but don't crash - just warn
                 print(f"  Warning: Could not delete {path} (files in use)")
-                print(f"    Training will continue, but old files may remain.")
                 return False
     return False
 
 
 def train(resume=False):
-    """Train the VWL simulation using config.yaml parameters
-    
-    Args:
-        resume: If True, continues training from the latest checkpoint
-    """
-    # Load all configuration from config.yaml
+    """Train the VWL simulation using config.yaml parameters"""
     config = load_config()
     
-    # Extract environment configuration
     env_cfg = config.get('environment', {})
     env_config = {
         'n_firms': env_cfg.get('n_firms', 2),
@@ -84,12 +85,10 @@ def train(resume=False):
         'max_steps': env_cfg.get('max_steps', 100),
     }
     
-    # Extract training configuration
     train_cfg = config.get('training', {})
     config_iterations = train_cfg.get('iterations', 50)
     checkpoint_freq = train_cfg.get('checkpoint_frequency', 10)
     
-    # Extract PPO configuration
     ppo_cfg = train_cfg.get('ppo', {})
     lr = ppo_cfg.get('learning_rate', 3e-4)
     gamma_val = ppo_cfg.get('gamma', 0.99)
@@ -99,20 +98,17 @@ def train(resume=False):
     minibatch = ppo_cfg.get('minibatch_size', 128)
     epochs = ppo_cfg.get('num_epochs', 10)
     
-    # Extract resources configuration
     res_cfg = train_cfg.get('resources', {})
     n_workers = res_cfg.get('num_env_runners', 2)
     n_gpus = res_cfg.get('num_gpus', 0)
     
-    # Setup directories
     checkpoint_dir = os.path.abspath("./checkpoints")
     metrics_dir = os.path.abspath("./metrics")
     
     print("\n" + "="*70)
-    print("  VWL SIMULATION - REINFORCEMENT LEARNING TRAINING")
+    print("  VWL SIMULATION - TRAINING")
     print("="*70)
     
-    # Check for resume and calculate iterations
     start_iteration = 0
     resume_checkpoint = None
     total_iterations = config_iterations
@@ -120,71 +116,35 @@ def train(resume=False):
     if resume:
         resume_checkpoint, start_iteration = find_latest_checkpoint()
         if resume_checkpoint:
-            # Calculate new target: current_iteration + config_iterations
             total_iterations = start_iteration + config_iterations
-            print(f"\n[RESUME MODE]")
-            print(f"  * Found checkpoint at iteration {start_iteration}")
-            print(f"  * Path: {resume_checkpoint}")
-            print(f"  * Config specifies {config_iterations} iterations")
-            print(f"  -> Training from iteration {start_iteration + 1} to {total_iterations}")
+            print(f"\nResuming from iteration {start_iteration} -> {total_iterations}")
         else:
-            print("\n[RESUME MODE]")
-            print(f"  Warning: No checkpoint found, starting fresh training")
-            print(f"  -> Training for {config_iterations} iterations")
+            print(f"\nNo checkpoint found, starting fresh")
             resume = False
     else:
-        print(f"\n[FRESH TRAINING]")
-        print(f"  -> Training for {config_iterations} iterations")
+        print(f"\nFresh training: {config_iterations} iterations")
     
-    # Clear old data only if NOT resuming
     if not resume:
-        print("\n[1/4] Preparing environment...")
-        if safe_rmtree(checkpoint_dir):
-            print("  * Cleared old checkpoints")
-        if safe_rmtree(metrics_dir):
-            print("  * Cleared old metrics")
-        
+        safe_rmtree(checkpoint_dir)
+        safe_rmtree(metrics_dir)
         os.makedirs(checkpoint_dir, exist_ok=True)
         os.makedirs(metrics_dir, exist_ok=True)
-    else:
-        print("\n[1/4] Resuming training...")
-        print("  * Keeping existing checkpoints and metrics")
     
-    # Display configuration
-    print("\n[2/4] Configuration (from config.yaml):")
-    print(f"  Environment:")
-    print(f"    - Firms: {env_config['n_firms']}")
-    print(f"    - Households: {env_config['n_households']}")
-    print(f"    - Steps per episode: {env_config['max_steps']}")
-    print(f"  Training:")
-    if resume and resume_checkpoint:
-        print(f"    - Resuming from iteration: {start_iteration}")
-        print(f"    - Config iterations: {config_iterations}")
-        print(f"    - New target iteration: {total_iterations}")
-        print(f"    - Iterations to train: {total_iterations - start_iteration}")
-    else:
-        print(f"    - Total iterations: {total_iterations}")
-    print(f"    - Checkpoint every: {checkpoint_freq} iterations")
-    print(f"  PPO:")
-    print(f"    - Learning rate: {lr}")
-    print(f"    - Gamma: {gamma_val}")
-    print(f"    - Lambda: {lambda_val}")
-    print(f"    - Clip param: {clip_val}")
-    print(f"  Resources:")
-    print(f"    - Workers: {n_workers}")
-    print(f"    - GPUs: {n_gpus}")
-    
-    # Build or load PPO algorithm
-    print("\n[3/4] Building PPO algorithm...")
+    print(f"Environment: {env_config['n_firms']} firms, {env_config['n_households']} households")
+    print(f"Resources: {n_workers} workers, {n_gpus} GPUs")
+    print("\nBuilding algorithm...")
     
     if resume and resume_checkpoint:
-        # Load from checkpoint - ensure absolute path
-        abs_checkpoint = os.path.abspath(resume_checkpoint)
-        print(f"  Loading checkpoint: {abs_checkpoint}")
-        algo = PPO.from_checkpoint(abs_checkpoint)
-        print("  * Algorithm loaded from checkpoint")
+        # Suppress Ray's output during loading
+        old_stdout = sys.stdout
+        sys.stdout = open(os.devnull, 'w')
+        try:
+            algo = PPO.from_checkpoint(os.path.abspath(resume_checkpoint))
+        finally:
+            sys.stdout.close()
+            sys.stdout = old_stdout
+        print("Algorithm loaded from checkpoint")
     else:
-        # Build fresh
         rllib_config = (
             PPOConfig()
             .api_stack(
@@ -225,17 +185,34 @@ def train(resume=False):
             )
         )
         
-        algo = rllib_config.build()
-        print("  * Algorithm ready")
+        # Suppress Ray's initialization output
+        old_stdout = sys.stdout
+        sys.stdout = open(os.devnull, 'w')
+        try:
+            algo = rllib_config.build()
+        finally:
+            sys.stdout.close()
+            sys.stdout = old_stdout
+        print("Algorithm built")
     
-    # Training loop
-    print("\n[4/4] Training...")
     print("\n" + "-"*70)
-    print(f"{'Iter':<6} {'Reward':<12} {'Min':<10} {'Max':<10} {'Ep Len':<10}")
+    print(f"{'Iter':<6} {'Reward':<12} {'Min':<10} {'Max':<10} {'EpLen':<8}")
     print("-"*70)
     
     for i in range(start_iteration, total_iterations):
-        result = algo.train()
+        # Suppress Ray's training output
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        sys.stdout = open(os.devnull, 'w')
+        sys.stderr = open(os.devnull, 'w')
+        
+        try:
+            result = algo.train()
+        finally:
+            sys.stdout.close()
+            sys.stderr.close()
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
         
         env_runners = result.get('env_runners', {})
         reward_mean = env_runners.get('episode_reward_mean', 0.0)
@@ -243,13 +220,11 @@ def train(resume=False):
         reward_max = env_runners.get('episode_reward_max', 0.0)
         episode_len = env_runners.get('episode_len_mean', 0.0)
         
-        print(f"{i+1:<6} {reward_mean:<12.2f} {reward_min:<10.2f} {reward_max:<10.2f} {episode_len:<10.0f}")
+        print(f"{i+1:<6} {reward_mean:<12.2f} {reward_min:<10.2f} {reward_max:<10.2f} {episode_len:<8.0f}")
         
-        # Checkpoint?
         should_checkpoint = (i + 1) % checkpoint_freq == 0 or (i + 1) == total_iterations
         
         if should_checkpoint:
-            # Save metrics
             iteration_dir = os.path.join(metrics_dir, f"iteration_{i+1}")
             os.makedirs(iteration_dir, exist_ok=True)
             
@@ -265,17 +240,20 @@ def train(resume=False):
                     }
                 }, f)
             
-            # Create specific checkpoint folder
             checkpoint_name = f"checkpoint_{i+1:06d}"
             checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
             os.makedirs(checkpoint_path, exist_ok=True)
             
-            # Save checkpoint to specific directory
-            checkpoint_result = algo.save()
-            # Copy from temporary location to our folder
-            checkpoint_result.checkpoint.to_directory(checkpoint_path)
+            # Suppress checkpoint saving output
+            old_stdout = sys.stdout
+            sys.stdout = open(os.devnull, 'w')
+            try:
+                checkpoint_result = algo.save()
+                checkpoint_result.checkpoint.to_directory(checkpoint_path)
+            finally:
+                sys.stdout.close()
+                sys.stdout = old_stdout
             
-            # Save metadata WITH env_config!
             metadata_file = os.path.join(checkpoint_path, "metadata.json")
             is_final = (i + 1) == total_iterations
             
@@ -286,56 +264,32 @@ def train(resume=False):
                 'timestamp': result.get('timestamp', 0),
                 'is_favorite': is_final,
                 'checkpoint_path': checkpoint_path,
-                # ADD ENV CONFIG HERE!
-                'env_config': {
-                    'n_firms': env_config['n_firms'],
-                    'n_households': env_config['n_households'],
-                    'max_steps': env_config['max_steps'],
-                }
+                'env_config': env_config
             }
             
             with open(metadata_file, 'w') as f:
                 json.dump(metadata, f, indent=2)
             
-            if is_final:
-                print(f"\n  [*] Checkpoint {i+1} saved: {checkpoint_path}")
-            else:
-                print(f"\n  [+] Checkpoint {i+1} saved: {checkpoint_path}")
+            marker = "[*]" if is_final else "[+]"
+            print(f"  {marker} Checkpoint saved: iteration {i+1}")
     
     print("-"*70)
-    print("\n[SUCCESS] Training complete!\n")
+    print("\nTraining complete!\n")
     
     algo.stop()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Train VWL simulation (all parameters from config.yaml)",
+        description="Train VWL simulation",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-All training parameters are now configured in config.yaml!
-
-Examples:
-  # Start fresh training with config.yaml parameters
-  python train.py
-  
-  # Resume from last checkpoint and train for additional iterations
-  # (adds config.yaml iterations to current checkpoint iteration)
-  python train.py --resume
-  
-Note:
-  - If you have 100 iterations saved and config.yaml has iterations: 50
-  - Running with --resume will train from iteration 101 to 150
-  - Without --resume, it starts fresh from iteration 1 to 50
-        """
     )
     
     parser.add_argument(
         "--resume", 
         action='store_true', 
-        help="Resume from latest checkpoint and train for config.yaml iterations"
+        help="Resume from latest checkpoint"
     )
     
     args = parser.parse_args()
-    
     train(resume=args.resume)
