@@ -11,7 +11,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
     - Household skill levels and job matching
     - Firm bankruptcy mechanism
     - Extended action space (price, wage, marketing, quality, capacity)
-    - Realistic economic parameters
+    - Balanced economic parameters for challenging but fair gameplay
     """
     
     def __init__(self, config=None):
@@ -53,27 +53,27 @@ class SimpleEconomyEnv(MultiAgentEnv):
             4: 0.10,   # +10%
         }
         
-        # Production parameters
+        # Production parameters (BALANCED)
         prod_cfg = econ_cfg.get('production', {})
-        self.productivity_base = prod_cfg.get('productivity_per_employee', 5.0)  # Base units per employee
+        self.productivity_base = prod_cfg.get('productivity_per_employee', 6.0)  # Increased from 5.0
         self.production_cost_per_unit = prod_cfg.get('cost_per_unit', 2.0)
-        self.fixed_costs = prod_cfg.get('fixed_costs', 50.0)  # Higher realistic fixed costs
-        self.storage_cost_per_unit = prod_cfg.get('storage_cost_per_unit', 0.5)
+        self.fixed_costs = prod_cfg.get('fixed_costs', 30.0)  # Reduced from 50.0
+        self.storage_cost_per_unit = prod_cfg.get('storage_cost_per_unit', 0.2)  # Reduced from 0.5
         
-        # Marketing & Quality costs
-        self.marketing_cost_per_level = 20.0  # Cost per marketing level increase
-        self.quality_improvement_cost = 30.0  # Cost to improve quality
-        self.capacity_expansion_cost = 50.0   # Cost to hire one more employee capacity
+        # Investment costs
+        self.marketing_cost_per_level = 20.0
+        self.quality_improvement_cost = 30.0
+        self.capacity_expansion_cost = 50.0
         
         # Household parameters
         hh_cfg = econ_cfg.get('households', {})
-        self.consumption_rate = hh_cfg.get('consumption_rate', 0.6)
+        self.consumption_rate = hh_cfg.get('consumption_rate', 0.7)  # Increased from 0.6
         self.utility_price_weight = hh_cfg.get('utility_price_weight', 1.0)
         self.utility_quality_weight = hh_cfg.get('utility_quality_weight', 0.5)
-        self.utility_marketing_weight = 0.3  # Marketing affects utility
+        self.utility_marketing_weight = 0.3
         
         # Reward parameters
-        self.reward_scale = econ_cfg.get('reward_scale', 100.0)  # Higher scale for realistic values
+        self.reward_scale = econ_cfg.get('reward_scale', 100.0)
         
         # Bounds
         price_bounds = econ_cfg.get('price_bounds', {'min': 5.0, 'max': 100.0})
@@ -83,23 +83,15 @@ class SimpleEconomyEnv(MultiAgentEnv):
         self.wage_min = wage_bounds['min']
         self.wage_max = wage_bounds['max']
         
+        # Bankruptcy threshold
+        self.bankruptcy_threshold = -400.0  # More forgiving than -200
+        
         self._agent_ids = set(f"firm_{i}" for i in range(self.n_firms))
         
-        # Extended Observation Space (20 features):
-        # [own_price, own_wage, own_employees, own_inventory, own_capital, own_quality, own_marketing,
-        #  market_avg_price, market_min_price, market_max_price,
-        #  market_avg_wage, market_min_wage, market_max_wage,
-        #  total_employed, unemployment_rate, 
-        #  avg_household_money, avg_household_skill,
-        #  own_profit_last_step, competitors_alive, timestep]
+        # Extended Observation Space (20 features)
         self._obs_space = Box(low=-1000.0, high=1000.0, shape=(20,), dtype=np.float32)
         
         # Extended Action Space: [price_change, wage_change, marketing_level, quality_improve, capacity_change]
-        # price_change: 0=-10%, 1=-5%, 2=0%, 3=+5%, 4=+10%
-        # wage_change: 0=-10%, 1=-5%, 2=0%, 3=+5%, 4=+10%
-        # marketing_level: 0=decrease, 1=keep, 2=increase
-        # quality_improve: 0=no, 1=yes (costs money)
-        # capacity_change: 0=decrease 1, 1=keep, 2=increase 1 (costs money)
         self._action_space = MultiDiscrete([5, 5, 3, 2, 3])
         
         self.reset()
@@ -125,7 +117,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         emp_range = firm_ranges.get('max_employees', {'min': 3, 'max': 10})
         money_range = hh_ranges.get('money', {'min': 100.0, 'max': 200.0})
         
-        # Initialize firms with capital
+        # Initialize firms with higher starting capital
         self.firms = {}
         for i in range(self.n_firms):
             self.firms[f"firm_{i}"] = {
@@ -135,13 +127,13 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 'employees': 0,
                 'inventory': 0.0,
                 'production': 0.0,
-                'capital': np.random.uniform(500.0, 1000.0),  # Starting capital
+                'capital': np.random.uniform(1000.0, 1500.0),  # Increased from 500-1000
                 'profit': 0.0,
                 'profit_last_step': 0.0,
                 'revenue': 0.0,
                 'costs': 0.0,
-                'quality': np.random.uniform(0.5, 0.8),  # Product quality
-                'marketing': np.random.uniform(0.3, 0.6),  # Marketing level
+                'quality': np.random.uniform(0.5, 0.8),
+                'marketing': np.random.uniform(0.3, 0.6),
                 'bankrupt': False,
             }
         
@@ -150,7 +142,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         for _ in range(self.n_households):
             self.households.append({
                 'money': np.random.uniform(money_range['min'], money_range['max']),
-                'skill_level': np.random.uniform(0.3, 1.0),  # 0.3 = low skill, 1.0 = high skill
+                'skill_level': np.random.uniform(0.3, 1.0),
                 'employer': None,
                 'wage': 0.0,
                 'wealth_type': np.random.choice(['low', 'medium', 'high'], p=[0.3, 0.5, 0.2]),
@@ -173,9 +165,9 @@ class SimpleEconomyEnv(MultiAgentEnv):
             
             price_action = action[0]
             wage_action = action[1]
-            marketing_action = action[2]  # 0=decrease, 1=keep, 2=increase
-            quality_action = action[3]    # 0=no, 1=improve
-            capacity_action = action[4]   # 0=decrease, 1=keep, 2=increase
+            marketing_action = action[2]
+            quality_action = action[3]
+            capacity_action = action[4]
             
             # Apply price adjustment
             price_adjustment = self.adjustment_rates[price_action]
@@ -249,7 +241,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
                     
                     # Pay wage immediately
                     household['money'] += firm['wage']
-                    firm['capital'] -= firm['wage']  # Wages reduce capital
+                    firm['capital'] -= firm['wage']
                     break
         
         # Phase 3: Production (skill affects productivity)
@@ -291,7 +283,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 quality = firm['quality']
                 marketing = firm['marketing']
                 
-                # Utility = (Quality * Q_weight + Marketing * M_weight) / (Price * P_weight)
+                # Utility = (Quality × Q_weight + Marketing × M_weight) / (Price × P_weight)
                 if price > 0:
                     numerator = (quality * self.utility_quality_weight + 
                                marketing * self.utility_marketing_weight)
@@ -310,7 +302,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
             
             # Calculate quantity to buy
             quantity = budget / firm['price'] if firm['price'] > 0 else 0
-            quantity = min(quantity, firm['inventory'])  # Can't buy more than available
+            quantity = min(quantity, firm['inventory'])
             
             if quantity > 0:
                 total_sales[best_firm] += quantity
@@ -349,8 +341,8 @@ class SimpleEconomyEnv(MultiAgentEnv):
             # Update capital
             firm['capital'] += profit
             
-            # Check bankruptcy (capital drops below -200)
-            if firm['capital'] < -200.0:
+            # Check bankruptcy (more forgiving threshold)
+            if firm['capital'] < self.bankruptcy_threshold:
                 firm['bankrupt'] = True
                 self.bankruptcies_this_episode += 1
                 rewards[agent_id] = -20.0  # Large penalty for bankruptcy
