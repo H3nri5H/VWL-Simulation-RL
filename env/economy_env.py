@@ -20,7 +20,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         # Load default config from YAML
         config_path = Path(__file__).parent.parent / "config.yaml"
         if config_path.exists():
-            with open(config_path, 'r') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:  # FIX: Added UTF-8 encoding
                 default_config = yaml.safe_load(f)
         else:
             default_config = {}
