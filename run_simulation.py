@@ -31,22 +31,31 @@ def find_checkpoints():
         else:
             metadata = {'iteration': 0, 'reward_mean': 0.0}
         
-        # Load env config
+        # Load env config from rllib_checkpoint.json
         rllib_config_file = checkpoint_dir / "rllib_checkpoint.json"
+        env_config = None
+        
         if rllib_config_file.exists():
-            with open(rllib_config_file, 'r') as f:
-                rllib_config = json.load(f)
-                env_config = rllib_config.get('env_config', {})
-        else:
+            try:
+                with open(rllib_config_file, 'r') as f:
+                    rllib_config = json.load(f)
+                    # Extract env_config from checkpoint
+                    env_config = rllib_config.get('env_config', {})
+            except:
+                pass
+        
+        # Fallback to defaults if not found
+        if env_config is None:
             env_config = {'n_firms': 2, 'n_households': 10, 'max_steps': 100}
         
         checkpoints.append({
-            'path': str(checkpoint_dir),
+            'path': str(checkpoint_dir.absolute()),  # Absolute path!
             'iteration': metadata.get('iteration', 0),
             'reward': metadata.get('reward_mean', 0.0),
             'n_firms': env_config.get('n_firms', 2),
             'n_households': env_config.get('n_households', 10),
             'max_steps': env_config.get('max_steps', 100),
+            'env_config': env_config,  # Store full config
         })
     
     checkpoints.sort(key=lambda x: x['iteration'])
@@ -111,7 +120,7 @@ def get_simulation_config(checkpoint):
             # Use default ranges from config.yaml
             config['price_range'] = (8.0, 15.0)
             config['wage_range'] = (5.0, 12.0)
-            config['money_range'] = (40.0, 60.0)
+            config['money_range'] = (100.0, 150.0)
             
         except ValueError:
             print("Invalid seed, switching to manual mode.")
@@ -152,11 +161,11 @@ def get_simulation_config(checkpoint):
         
         # Initial money range
         print("\nInitial money range per household:")
-        money_min = input("  Min money [40.0]: ").strip()
-        money_max = input("  Max money [60.0]: ").strip()
+        money_min = input("  Min money [100.0]: ").strip()
+        money_max = input("  Max money [150.0]: ").strip()
         config['money_range'] = (
-            float(money_min) if money_min else 40.0,
-            float(money_max) if money_max else 60.0
+            float(money_min) if money_min else 100.0,
+            float(money_max) if money_max else 150.0
         )
         
         # Generate random seed for this configuration
@@ -297,16 +306,20 @@ def run_simulation(checkpoint, config):
     results_dir = Path("./simulation_results")
     results_dir.mkdir(exist_ok=True)
     
-    # Setup environment
-    env_config = {
-        'n_firms': checkpoint['n_firms'],
-        'n_households': checkpoint['n_households'],
-        'max_steps': config['max_steps'],
-    }
+    # Use checkpoint's environment config!
+    env_config = checkpoint['env_config'].copy()
+    env_config['max_steps'] = config['max_steps']  # Override max_steps from user
+    
+    print(f"\nEnvironment config:")
+    print(f"  - Firms: {env_config['n_firms']}")
+    print(f"  - Households: {env_config['n_households']}")
+    print(f"  - Max Steps: {env_config['max_steps']}")
     
     # Load trained model
-    print(f"\nLoading model...")
+    print(f"\nLoading model from: {checkpoint['path']}")
     algo = PPO.from_checkpoint(checkpoint['path'])
+    
+    # Create environment with checkpoint's config
     env = SimpleEconomyEnv(env_config)
     
     # Reset environment with specified seed
