@@ -25,26 +25,33 @@ def find_checkpoints():
         
         # Load metadata
         metadata_file = checkpoint_dir / "metadata.json"
-        if metadata_file.exists():
-            with open(metadata_file, 'r') as f:
-                metadata = json.load(f)
-        else:
-            metadata = {'iteration': 0, 'reward_mean': 0.0}
-        
-        # Try to load env config from rllib_checkpoint.json
-        rllib_config_file = checkpoint_dir / "rllib_checkpoint.json"
+        metadata = None
         env_config = None
         
-        if rllib_config_file.exists():
+        if metadata_file.exists():
             try:
-                with open(rllib_config_file, 'r') as f:
-                    rllib_config = json.load(f)
-                    # Extract env_config from checkpoint
-                    env_config = rllib_config.get('env_config', None)
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+                    # Try to get env_config from metadata (NEW way)
+                    env_config = metadata.get('env_config', None)
             except Exception as e:
-                print(f"Warning: Could not load config from {checkpoint_dir.name}: {e}")
+                print(f"Warning: Could not load metadata from {checkpoint_dir.name}: {e}")
         
-        # Fallback: Use defaults if not found
+        if metadata is None:
+            metadata = {'iteration': 0, 'reward_mean': 0.0}
+        
+        # If env_config not in metadata, try rllib_checkpoint.json (OLD way)
+        if env_config is None:
+            rllib_config_file = checkpoint_dir / "rllib_checkpoint.json"
+            if rllib_config_file.exists():
+                try:
+                    with open(rllib_config_file, 'r') as f:
+                        rllib_config = json.load(f)
+                        env_config = rllib_config.get('env_config', None)
+                except Exception as e:
+                    print(f"Warning: Could not load rllib config from {checkpoint_dir.name}: {e}")
+        
+        # Fallback: Use defaults if not found anywhere
         if env_config is None or not isinstance(env_config, dict):
             env_config = {
                 'n_firms': 2,
