@@ -5,9 +5,9 @@
 # ENVIRONMENT CONFIGURATION
 # ============================================================================
 environment:
-  n_firms: 2                    # Number of competing firms
-  n_households: 10              # Number of households (consumers + workers)
-  max_steps: 50                 # Steps per episode
+  n_firms: 10                    # Number of competing firms
+  n_households: 50               # Number of households (consumers + workers)
+  max_steps: 100                 # Steps per episode
 
 # ============================================================================
 # INITIAL VALUE RANGES (at episode start)
@@ -16,75 +16,106 @@ initial_ranges:
   # Firm starting values
   firms:
     price:
-      min: 8.0                  # Minimum initial price
-      max: 15.0                 # Maximum initial price
+      min: 20.0                  # Minimum initial price (more realistic)
+      max: 40.0                  # Maximum initial price
     wage:
-      min: 5.0                  # Minimum initial wage
-      max: 12.0                 # Maximum initial wage
+      min: 15.0                  # Minimum initial wage (realistic hourly wage)
+      max: 30.0                  # Maximum initial wage
     max_employees:
-      min: 2                    # Minimum capacity
-      max: 10                   # Maximum capacity
+      min: 3                     # Minimum capacity
+      max: 10                    # Maximum capacity
   
   # Household starting values
   households:
     money:
-      min: 100.0                # Minimum starting capital (increased from 80)
-      max: 150.0                # Maximum starting capital (increased from 100)
+      min: 100.0                 # Minimum starting capital
+      max: 200.0                 # Maximum starting capital
 
 # ============================================================================
 # TRAINING CONFIGURATION
 # ============================================================================
 training:
-  iterations: 50                # Total training iterations
-  checkpoint_frequency: 10      # Save checkpoint every N iterations
+  iterations: 10                 # Total training iterations (adjust as needed)
+  checkpoint_frequency: 10       # Save checkpoint every N iterations
   
   # PPO Hyperparameters
   ppo:
     learning_rate: 0.0003
-    gamma: 0.99                 # Discount factor
-    lambda: 0.95                # GAE lambda
-    clip_param: 0.2             # PPO clip parameter
-    train_batch_size: 400
-    minibatch_size: 128
+    gamma: 0.99                  # Discount factor
+    lambda: 0.95                 # GAE lambda
+    clip_param: 0.2              # PPO clip parameter
+    train_batch_size: 4000       # Increased for more stability
+    minibatch_size: 256          # Increased minibatch
     num_epochs: 10
   
   # Parallel workers
   resources:
-    num_env_runners: 2          # Parallel workers for sampling
-    num_gpus: 0                 # GPUs for training (0 = CPU only)
+    num_env_runners: 4           # More workers for diverse experiences
+    num_gpus: 0                  # GPUs for training (0 = CPU only)
 
 # ============================================================================
 # ECONOMIC PARAMETERS
 # ============================================================================
 economy:
-  # Action Space (defined in env/economy_env.py):
-  # - Price/Wage adjustments: -10%, -5%, 0%, +5%, +10% (5 discrete actions)
-  # - Firms choose one adjustment level per parameter each step
+  # Extended Action Space (5 actions per firm):
+  # 1. Price adjustment: -10%, -5%, 0%, +5%, +10% (5 options)
+  # 2. Wage adjustment: -10%, -5%, 0%, +5%, +10% (5 options)
+  # 3. Marketing level: decrease, keep, increase (3 options)
+  # 4. Quality improvement: no, yes (2 options, costs money)
+  # 5. Capacity change: decrease 1, keep, increase 1 (3 options, increase costs money)
   
   # Bounds (firms cannot set prices/wages outside these limits)
   price_bounds:
-    min: 1.0                    # Minimum allowed price
-    max: 50.0                   # Maximum allowed price
+    min: 5.0                     # Minimum allowed price
+    max: 100.0                   # Maximum allowed price
   wage_bounds:
-    min: 1.0                    # Minimum allowed wage
-    max: 20.0                   # Maximum allowed wage
+    min: 5.0                     # Minimum allowed wage
+    max: 50.0                    # Maximum allowed wage
   
-  # Production parameters (REBALANCED)
+  # Production parameters (REALISTIC VALUES)
   production:
-    productivity_per_employee: 10.0   # Units produced per employee per step
-    cost_per_unit: 0.5                # Variable cost per unit (reduced from 2.0)
-    fixed_costs: 5.0                  # Fixed costs per step (reduced from 15.0)
-    storage_cost_per_unit: 0.1        # Storage cost per unit (reduced from 0.5)
+    productivity_per_employee: 5.0      # Base units per employee (skill affects this)
+    cost_per_unit: 2.0                  # Variable production cost per unit
+    fixed_costs: 50.0                   # Fixed costs per step (rent, utilities, etc.)
+    storage_cost_per_unit: 0.5          # Cost to store unsold inventory
   
   # Household behavior
   households:
-    consumption_rate: 0.6             # Base % of money households spend per step
-    utility_price_weight: 1.0         # Weight of price in utility calculation
-    utility_quality_weight: 0.5       # Weight of quality in utility calculation
-    # Household types (low/medium/high) affect consumption multipliers:
-    # - low: 0.8x consumption
+    consumption_rate: 0.6               # Base % of money households spend per step
+    utility_price_weight: 1.0           # Weight of price in utility calculation
+    utility_quality_weight: 0.5         # Weight of quality in utility
+    # Household types affect spending:
+    # - low: 0.8x consumption (save more)
     # - medium: 1.0x consumption
-    # - high: 1.2x consumption
+    # - high: 1.2x consumption (spend more)
+    # Household skills (0.3 to 1.0) affect productivity at firms
   
   # Reward scaling
-  reward_scale: 10.0            # Divide profit by this for reward normalization
+  reward_scale: 100.0            # Divide profit by this for reward normalization
+
+# ============================================================================
+# NEW FEATURES
+# ============================================================================
+# Firm Mechanics:
+# - Starting capital: 500-1000 (randomized)
+# - Bankruptcy threshold: capital < -200
+# - Marketing investment: 20 per level increase (affects utility)
+# - Quality improvement: 30 per improvement (affects utility)
+# - Capacity expansion: 50 per additional employee slot
+
+# Labor Market:
+# - Households have skill levels (0.3 = low, 1.0 = high)
+# - Best skilled workers match with highest wage firms first
+# - Employee skills affect firm productivity (0.5-1.0x multiplier)
+# - Wages are paid from firm capital immediately
+
+# Goods Market:
+# - Utility = (Quality × 0.5 + Marketing × 0.3) / (Price × 1.0)
+# - Households buy from firm with highest utility
+# - Inventory system: firms can't sell more than they have
+
+# Bankruptcy:
+# - Firms can go bankrupt if capital < -200
+# - Bankrupt firms receive penalty reward (-20)
+# - Episode ends if all firms bankrupt
+# - Surviving firms get capital bonus in reward
