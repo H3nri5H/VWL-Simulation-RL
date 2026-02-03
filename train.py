@@ -271,7 +271,7 @@ def train(
             # Copy from temporary location to our folder
             checkpoint_result.checkpoint.to_directory(checkpoint_path)
             
-            # Save metadata
+            # Save metadata WITH env_config!
             metadata_file = os.path.join(checkpoint_path, "metadata.json")
             is_final = (i + 1) == total_iterations
             
@@ -281,7 +281,13 @@ def train(
                 'episode_len_mean': episode_len,
                 'timestamp': result.get('timestamp', 0),
                 'is_favorite': is_final,
-                'checkpoint_path': checkpoint_path
+                'checkpoint_path': checkpoint_path,
+                # ADD ENV CONFIG HERE!
+                'env_config': {
+                    'n_firms': env_config['n_firms'],
+                    'n_households': env_config['n_households'],
+                    'max_steps': env_config['max_steps'],
+                }
             }
             
             with open(metadata_file, 'w') as f:
