@@ -19,7 +19,7 @@ def load_config():
         raise FileNotFoundError(
             "config.yaml not found! Please create a config.yaml file with your training parameters."
         )
-    with open(config_path, 'r') as f:
+    with open(config_path, 'r', encoding='utf-8') as f:  # FIX: Added UTF-8 encoding
         return yaml.safe_load(f)
 
 
@@ -61,7 +61,7 @@ def safe_rmtree(path, max_retries=3):
                 continue
             else:
                 # Last attempt failed, but don't crash - just warn
-                print(f"  ⚠ Warning: Could not delete {path} (files in use)")
+                print(f"  Warning: Could not delete {path} (files in use)")
                 print(f"    Training will continue, but old files may remain.")
                 return False
     return False
@@ -123,32 +123,32 @@ def train(resume=False):
             # Calculate new target: current_iteration + config_iterations
             total_iterations = start_iteration + config_iterations
             print(f"\n[RESUME MODE]")
-            print(f"  ✓ Found checkpoint at iteration {start_iteration}")
-            print(f"  ✓ Path: {resume_checkpoint}")
-            print(f"  ✓ Config specifies {config_iterations} iterations")
-            print(f"  → Training from iteration {start_iteration + 1} to {total_iterations}")
+            print(f"  * Found checkpoint at iteration {start_iteration}")
+            print(f"  * Path: {resume_checkpoint}")
+            print(f"  * Config specifies {config_iterations} iterations")
+            print(f"  -> Training from iteration {start_iteration + 1} to {total_iterations}")
         else:
             print("\n[RESUME MODE]")
-            print("  ⚠ No checkpoint found, starting fresh training")
-            print(f"  → Training for {config_iterations} iterations")
+            print(f"  Warning: No checkpoint found, starting fresh training")
+            print(f"  -> Training for {config_iterations} iterations")
             resume = False
     else:
         print(f"\n[FRESH TRAINING]")
-        print(f"  → Training for {config_iterations} iterations")
+        print(f"  -> Training for {config_iterations} iterations")
     
     # Clear old data only if NOT resuming
     if not resume:
         print("\n[1/4] Preparing environment...")
         if safe_rmtree(checkpoint_dir):
-            print("  ✓ Cleared old checkpoints")
+            print("  * Cleared old checkpoints")
         if safe_rmtree(metrics_dir):
-            print("  ✓ Cleared old metrics")
+            print("  * Cleared old metrics")
         
         os.makedirs(checkpoint_dir, exist_ok=True)
         os.makedirs(metrics_dir, exist_ok=True)
     else:
         print("\n[1/4] Resuming training...")
-        print("  ✓ Keeping existing checkpoints and metrics")
+        print("  * Keeping existing checkpoints and metrics")
     
     # Display configuration
     print("\n[2/4] Configuration (from config.yaml):")
@@ -182,7 +182,7 @@ def train(resume=False):
         abs_checkpoint = os.path.abspath(resume_checkpoint)
         print(f"  Loading checkpoint: {abs_checkpoint}")
         algo = PPO.from_checkpoint(abs_checkpoint)
-        print("  ✓ Algorithm loaded from checkpoint")
+        print("  * Algorithm loaded from checkpoint")
     else:
         # Build fresh
         rllib_config = (
@@ -226,7 +226,7 @@ def train(resume=False):
         )
         
         algo = rllib_config.build()
-        print("  ✓ Algorithm ready")
+        print("  * Algorithm ready")
     
     # Training loop
     print("\n[4/4] Training...")
@@ -298,12 +298,12 @@ def train(resume=False):
                 json.dump(metadata, f, indent=2)
             
             if is_final:
-                print(f"\n  ⭐ Checkpoint {i+1} saved: {checkpoint_path}")
+                print(f"\n  [*] Checkpoint {i+1} saved: {checkpoint_path}")
             else:
-                print(f"\n  💾 Checkpoint {i+1} saved: {checkpoint_path}")
+                print(f"\n  [+] Checkpoint {i+1} saved: {checkpoint_path}")
     
     print("-"*70)
-    print("\n✅ Training complete!\n")
+    print("\n[SUCCESS] Training complete!\n")
     
     algo.stop()
 
