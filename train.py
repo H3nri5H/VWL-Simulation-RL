@@ -23,7 +23,7 @@ def load_config():
 
 def find_latest_checkpoint():
     """Find the most recent checkpoint to resume from"""
-    checkpoint_dir = Path("./checkpoints")
+    checkpoint_dir = Path("./checkpoints").absolute()
     if not checkpoint_dir.exists():
         return None, 0
     
@@ -34,7 +34,8 @@ def find_latest_checkpoint():
             if metadata_file.exists():
                 with open(metadata_file, 'r') as f:
                     metadata = json.load(f)
-                    checkpoints.append((str(cp_dir), metadata.get('iteration', 0)))
+                    # Use absolute path!
+                    checkpoints.append((os.path.abspath(str(cp_dir)), metadata.get('iteration', 0)))
     
     if not checkpoints:
         return None, 0
@@ -173,9 +174,10 @@ def train(
     print("\n[3/4] Building PPO algorithm...")
     
     if resume and resume_checkpoint:
-        # Load from checkpoint
-        print(f"  Loading checkpoint: {resume_checkpoint}")
-        algo = PPO.from_checkpoint(resume_checkpoint)
+        # Load from checkpoint - ensure absolute path
+        abs_checkpoint = os.path.abspath(resume_checkpoint)
+        print(f"  Loading checkpoint: {abs_checkpoint}")
+        algo = PPO.from_checkpoint(abs_checkpoint)
         print("  ✓ Algorithm loaded from checkpoint")
     else:
         # Build fresh
