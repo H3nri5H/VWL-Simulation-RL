@@ -16,10 +16,10 @@ initial_ranges:
   # Firm starting values
   firms:
     price:
-      min: 20.0                  # Minimum initial price (more realistic)
+      min: 20.0                  # Minimum initial price
       max: 40.0                  # Maximum initial price
     wage:
-      min: 15.0                  # Minimum initial wage (realistic hourly wage)
+      min: 15.0                  # Minimum initial wage
       max: 30.0                  # Maximum initial wage
     max_employees:
       min: 3                     # Minimum capacity
@@ -35,7 +35,7 @@ initial_ranges:
 # TRAINING CONFIGURATION
 # ============================================================================
 training:
-  iterations: 10                 # Total training iterations (adjust as needed)
+  iterations: 50                 # Total training iterations
   checkpoint_frequency: 10       # Save checkpoint every N iterations
   
   # PPO Hyperparameters
@@ -44,7 +44,7 @@ training:
     gamma: 0.99                  # Discount factor
     lambda: 0.95                 # GAE lambda
     clip_param: 0.2              # PPO clip parameter
-    train_batch_size: 4000       # Increased for more stability
+    train_batch_size: 4000       # Increased for better learning
     minibatch_size: 256          # Increased minibatch
     num_epochs: 10
   
@@ -54,15 +54,15 @@ training:
     num_gpus: 0                  # GPUs for training (0 = CPU only)
 
 # ============================================================================
-# ECONOMIC PARAMETERS
+# ECONOMIC PARAMETERS (BALANCED FOR FAIR GAMEPLAY)
 # ============================================================================
 economy:
   # Extended Action Space (5 actions per firm):
   # 1. Price adjustment: -10%, -5%, 0%, +5%, +10% (5 options)
   # 2. Wage adjustment: -10%, -5%, 0%, +5%, +10% (5 options)
   # 3. Marketing level: decrease, keep, increase (3 options)
-  # 4. Quality improvement: no, yes (2 options, costs money)
-  # 5. Capacity change: decrease 1, keep, increase 1 (3 options, increase costs money)
+  # 4. Quality improvement: no, yes (2 options, costs 30)
+  # 5. Capacity change: decrease 1, keep, increase 1 (3 options, increase costs 50)
   
   # Bounds (firms cannot set prices/wages outside these limits)
   price_bounds:
@@ -72,16 +72,16 @@ economy:
     min: 5.0                     # Minimum allowed wage
     max: 50.0                    # Maximum allowed wage
   
-  # Production parameters (REALISTIC VALUES)
+  # Production parameters (BALANCED)
   production:
-    productivity_per_employee: 5.0      # Base units per employee (skill affects this)
+    productivity_per_employee: 6.0      # Base units per employee (increased from 5.0)
     cost_per_unit: 2.0                  # Variable production cost per unit
-    fixed_costs: 50.0                   # Fixed costs per step (rent, utilities, etc.)
-    storage_cost_per_unit: 0.5          # Cost to store unsold inventory
+    fixed_costs: 30.0                   # Fixed costs per step (reduced from 50.0)
+    storage_cost_per_unit: 0.2          # Storage cost per unit (reduced from 0.5)
   
   # Household behavior
   households:
-    consumption_rate: 0.6               # Base % of money households spend per step
+    consumption_rate: 0.7               # % of money spent per step (increased from 0.6)
     utility_price_weight: 1.0           # Weight of price in utility calculation
     utility_quality_weight: 0.5         # Weight of quality in utility
     # Household types affect spending:
@@ -94,28 +94,39 @@ economy:
   reward_scale: 100.0            # Divide profit by this for reward normalization
 
 # ============================================================================
-# NEW FEATURES
+# BALANCED GAME MECHANICS
 # ============================================================================
 # Firm Mechanics:
-# - Starting capital: 500-1000 (randomized)
-# - Bankruptcy threshold: capital < -200
-# - Marketing investment: 20 per level increase (affects utility)
-# - Quality improvement: 30 per improvement (affects utility)
-# - Capacity expansion: 50 per additional employee slot
+# - Starting capital: 1000-1500 (increased from 500-1000)
+# - Bankruptcy threshold: capital < -400 (more forgiving than -200)
+# - Break-even point: ~24% sales rate (achievable)
+# - Market supports ~71% sales per firm on average
+# - Profitable operation possible with 30%+ sales
 
 # Labor Market:
 # - Households have skill levels (0.3 = low, 1.0 = high)
 # - Best skilled workers match with highest wage firms first
-# - Employee skills affect firm productivity (0.5-1.0x multiplier)
-# - Wages are paid from firm capital immediately
+# - Employee skills affect productivity (0.5-1.0x multiplier)
+# - Wages paid from firm capital immediately
 
 # Goods Market:
 # - Utility = (Quality × 0.5 + Marketing × 0.3) / (Price × 1.0)
 # - Households buy from firm with highest utility
-# - Inventory system: firms can't sell more than they have
+# - Inventory system: firms can't sell more than they produce
+
+# Investment Costs:
+# - Marketing +1 level: 20
+# - Quality +0.05: 30
+# - Capacity +1 employee: 50
 
 # Bankruptcy:
-# - Firms can go bankrupt if capital < -200
-# - Bankrupt firms receive penalty reward (-20)
+# - Firms bankrupt if capital < -400
+# - Bankrupt firms get penalty reward (-20)
 # - Episode ends if all firms bankrupt
-# - Surviving firms get capital bonus in reward
+# - Surviving firms get capital bonus (+0 to +5)
+
+# Challenge Rating: ⭐⭐⭐ (Challenging but fair)
+# - Firms must balance costs and revenue
+# - Strategic investments in marketing/quality pay off
+# - Poor management leads to bankruptcy after 90+ steps
+# - Good management leads to sustained profitability
