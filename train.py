@@ -15,10 +15,12 @@ warnings.filterwarnings('ignore', category=DeprecationWarning)
 def load_config():
     """Load configuration from config.yaml"""
     config_path = Path("config.yaml")
-    if config_path.exists():
-        with open(config_path, 'r') as f:
-            return yaml.safe_load(f)
-    return {}
+    if not config_path.exists():
+        raise FileNotFoundError(
+            "config.yaml not found! Please create a config.yaml file with your training parameters."
+        )
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
 
 
 def find_latest_checkpoint():
@@ -65,54 +67,42 @@ def safe_rmtree(path, max_retries=3):
     return False
 
 
-def train(
-    # Environment parameters
-    n_firms=None,
-    n_households=None,
-    max_steps=None,
-    # Training parameters
-    iterations=None,
-    checkpoint_freq=None,
-    resume=False,
-    # PPO parameters
-    learning_rate=None,
-    gamma=None,
-    lambda_=None,
-    clip_param=None,
-    # Resources
-    num_env_runners=None,
-    num_gpus=None,
-):
-    # Load config
+def train(resume=False):
+    """Train the VWL simulation using config.yaml parameters
+    
+    Args:
+        resume: If True, continues training from the latest checkpoint
+    """
+    # Load all configuration from config.yaml
     config = load_config()
     
-    # Environment config (use args or config.yaml or defaults)
+    # Extract environment configuration
     env_cfg = config.get('environment', {})
     env_config = {
-        'n_firms': n_firms or env_cfg.get('n_firms', 2),
-        'n_households': n_households or env_cfg.get('n_households', 10),
-        'max_steps': max_steps or env_cfg.get('max_steps', 100),
+        'n_firms': env_cfg.get('n_firms', 2),
+        'n_households': env_cfg.get('n_households', 10),
+        'max_steps': env_cfg.get('max_steps', 100),
     }
     
-    # Training config
+    # Extract training configuration
     train_cfg = config.get('training', {})
-    total_iterations = iterations or train_cfg.get('iterations', 50)
-    checkpoint_freq = checkpoint_freq or train_cfg.get('checkpoint_frequency', 10)
+    config_iterations = train_cfg.get('iterations', 50)
+    checkpoint_freq = train_cfg.get('checkpoint_frequency', 10)
     
-    # PPO config
+    # Extract PPO configuration
     ppo_cfg = train_cfg.get('ppo', {})
-    lr = learning_rate or ppo_cfg.get('learning_rate', 3e-4)
-    gamma_val = gamma or ppo_cfg.get('gamma', 0.99)
-    lambda_val = lambda_ or ppo_cfg.get('lambda', 0.95)
-    clip_val = clip_param or ppo_cfg.get('clip_param', 0.2)
+    lr = ppo_cfg.get('learning_rate', 3e-4)
+    gamma_val = ppo_cfg.get('gamma', 0.99)
+    lambda_val = ppo_cfg.get('lambda', 0.95)
+    clip_val = ppo_cfg.get('clip_param', 0.2)
     train_batch = ppo_cfg.get('train_batch_size', 400)
     minibatch = ppo_cfg.get('minibatch_size', 128)
     epochs = ppo_cfg.get('num_epochs', 10)
     
-    # Resources
+    # Extract resources configuration
     res_cfg = train_cfg.get('resources', {})
-    n_workers = num_env_runners or res_cfg.get('num_env_runners', 2)
-    n_gpus = num_gpus if num_gpus is not None else res_cfg.get('num_gpus', 0)
+    n_workers = res_cfg.get('num_env_runners', 2)
+    n_gpus = res_cfg.get('num_gpus', 0)
     
     # Setup directories
     checkpoint_dir = os.path.abspath("./checkpoints")
@@ -122,21 +112,29 @@ def train(
     print("  VWL SIMULATION - REINFORCEMENT LEARNING TRAINING")
     print("="*70)
     
-    # Check for resume
+    # Check for resume and calculate iterations
     start_iteration = 0
     resume_checkpoint = None
+    total_iterations = config_iterations
     
     if resume:
         resume_checkpoint, start_iteration = find_latest_checkpoint()
         if resume_checkpoint:
+            # Calculate new target: current_iteration + config_iterations
+            total_iterations = start_iteration + config_iterations
             print(f"\n[RESUME MODE]")
             print(f"  ✓ Found checkpoint at iteration {start_iteration}")
             print(f"  ✓ Path: {resume_checkpoint}")
-            print(f"  → Continuing from iteration {start_iteration + 1}")
+            print(f"  ✓ Config specifies {config_iterations} iterations")
+            print(f"  → Training from iteration {start_iteration + 1} to {total_iterations}")
         else:
             print("\n[RESUME MODE]")
             print("  ⚠ No checkpoint found, starting fresh training")
+            print(f"  → Training for {config_iterations} iterations")
             resume = False
+    else:
+        print(f"\n[FRESH TRAINING]")
+        print(f"  → Training for {config_iterations} iterations")
     
     # Clear old data only if NOT resuming
     if not resume:
@@ -153,20 +151,26 @@ def train(
         print("  ✓ Keeping existing checkpoints and metrics")
     
     # Display configuration
-    print("\n[2/4] Configuration:")
+    print("\n[2/4] Configuration (from config.yaml):")
     print(f"  Environment:")
     print(f"    - Firms: {env_config['n_firms']}")
     print(f"    - Households: {env_config['n_households']}")
     print(f"    - Steps per episode: {env_config['max_steps']}")
     print(f"  Training:")
-    if resume:
-        print(f"    - Resuming from: {start_iteration}")
-        print(f"    - Target iterations: {total_iterations}")
-        print(f"    - Remaining: {total_iterations - start_iteration}")
+    if resume and resume_checkpoint:
+        print(f"    - Resuming from iteration: {start_iteration}")
+        print(f"    - Config iterations: {config_iterations}")
+        print(f"    - New target iteration: {total_iterations}")
+        print(f"    - Iterations to train: {total_iterations - start_iteration}")
     else:
-        print(f"    - Iterations: {total_iterations}")
+        print(f"    - Total iterations: {total_iterations}")
     print(f"    - Checkpoint every: {checkpoint_freq} iterations")
+    print(f"  PPO:")
     print(f"    - Learning rate: {lr}")
+    print(f"    - Gamma: {gamma_val}")
+    print(f"    - Lambda: {lambda_val}")
+    print(f"    - Clip param: {clip_val}")
+    print(f"  Resources:")
     print(f"    - Workers: {n_workers}")
     print(f"    - GPUs: {n_gpus}")
     
@@ -306,61 +310,32 @@ def train(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Train VWL simulation with configurable parameters",
+        description="Train VWL simulation (all parameters from config.yaml)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+All training parameters are now configured in config.yaml!
+
 Examples:
-  # Use defaults from config.yaml
+  # Start fresh training with config.yaml parameters
   python train.py
   
-  # Resume from last checkpoint
+  # Resume from last checkpoint and train for additional iterations
+  # (adds config.yaml iterations to current checkpoint iteration)
   python train.py --resume
   
-  # Override specific parameters
-  python train.py --n-firms 5 --n-households 20 --iterations 100
-  
-  # Quick test run
-  python train.py --iterations 10 --checkpoint-freq 5
+Note:
+  - If you have 100 iterations saved and config.yaml has iterations: 50
+  - Running with --resume will train from iteration 101 to 150
+  - Without --resume, it starts fresh from iteration 1 to 50
         """
     )
     
-    # Environment parameters
-    env_group = parser.add_argument_group('Environment')
-    env_group.add_argument("--n-firms", type=int, help="Number of firms")
-    env_group.add_argument("--n-households", type=int, help="Number of households")
-    env_group.add_argument("--max-steps", type=int, help="Steps per episode")
-    
-    # Training parameters
-    train_group = parser.add_argument_group('Training')
-    train_group.add_argument("--iterations", type=int, help="Total training iterations")
-    train_group.add_argument("--checkpoint-freq", type=int, help="Checkpoint frequency")
-    train_group.add_argument("--resume", action='store_true', help="Resume from latest checkpoint")
-    
-    # PPO parameters
-    ppo_group = parser.add_argument_group('PPO Hyperparameters')
-    ppo_group.add_argument("--lr", type=float, help="Learning rate")
-    ppo_group.add_argument("--gamma", type=float, help="Discount factor")
-    ppo_group.add_argument("--lambda", type=float, dest='lambda_', help="GAE lambda")
-    ppo_group.add_argument("--clip-param", type=float, help="PPO clip parameter")
-    
-    # Resources
-    res_group = parser.add_argument_group('Resources')
-    res_group.add_argument("--num-workers", type=int, help="Number of parallel workers")
-    res_group.add_argument("--num-gpus", type=int, help="Number of GPUs")
+    parser.add_argument(
+        "--resume", 
+        action='store_true', 
+        help="Resume from latest checkpoint and train for config.yaml iterations"
+    )
     
     args = parser.parse_args()
     
-    train(
-        n_firms=args.n_firms,
-        n_households=args.n_households,
-        max_steps=args.max_steps,
-        iterations=args.iterations,
-        checkpoint_freq=args.checkpoint_freq,
-        resume=args.resume,
-        learning_rate=args.lr,
-        gamma=args.gamma,
-        lambda_=args.lambda_,
-        clip_param=args.clip_param,
-        num_env_runners=args.num_workers,
-        num_gpus=args.num_gpus,
-    )
+    train(resume=args.resume)
