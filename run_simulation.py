@@ -31,7 +31,7 @@ def find_checkpoints():
         else:
             metadata = {'iteration': 0, 'reward_mean': 0.0}
         
-        # Load env config from rllib_checkpoint.json
+        # Try to load env config from rllib_checkpoint.json
         rllib_config_file = checkpoint_dir / "rllib_checkpoint.json"
         env_config = None
         
@@ -40,22 +40,31 @@ def find_checkpoints():
                 with open(rllib_config_file, 'r') as f:
                     rllib_config = json.load(f)
                     # Extract env_config from checkpoint
-                    env_config = rllib_config.get('env_config', {})
-            except:
-                pass
+                    env_config = rllib_config.get('env_config', None)
+            except Exception as e:
+                print(f"Warning: Could not load config from {checkpoint_dir.name}: {e}")
         
-        # Fallback to defaults if not found
-        if env_config is None:
-            env_config = {'n_firms': 2, 'n_households': 10, 'max_steps': 100}
+        # Fallback: Use defaults if not found
+        if env_config is None or not isinstance(env_config, dict):
+            env_config = {
+                'n_firms': 2,
+                'n_households': 10,
+                'max_steps': 100
+            }
+        
+        # Ensure all required keys exist
+        env_config.setdefault('n_firms', 2)
+        env_config.setdefault('n_households', 10)
+        env_config.setdefault('max_steps', 100)
         
         checkpoints.append({
-            'path': str(checkpoint_dir.absolute()),  # Absolute path!
+            'path': str(checkpoint_dir.absolute()),
             'iteration': metadata.get('iteration', 0),
             'reward': metadata.get('reward_mean', 0.0),
-            'n_firms': env_config.get('n_firms', 2),
-            'n_households': env_config.get('n_households', 10),
-            'max_steps': env_config.get('max_steps', 100),
-            'env_config': env_config,  # Store full config
+            'n_firms': env_config['n_firms'],
+            'n_households': env_config['n_households'],
+            'max_steps': env_config['max_steps'],
+            'env_config': env_config,
         })
     
     checkpoints.sort(key=lambda x: x['iteration'])
@@ -306,14 +315,14 @@ def run_simulation(checkpoint, config):
     results_dir = Path("./simulation_results")
     results_dir.mkdir(exist_ok=True)
     
-    # Use checkpoint's environment config!
+    # Use checkpoint's environment config
     env_config = checkpoint['env_config'].copy()
     env_config['max_steps'] = config['max_steps']  # Override max_steps from user
     
     print(f"\nEnvironment config:")
-    print(f"  - Firms: {env_config['n_firms']}")
-    print(f"  - Households: {env_config['n_households']}")
-    print(f"  - Max Steps: {env_config['max_steps']}")
+    print(f"  - Firms: {env_config.get('n_firms', 2)}")
+    print(f"  - Households: {env_config.get('n_households', 10)}")
+    print(f"  - Max Steps: {env_config.get('max_steps', 100)}")
     
     # Load trained model
     print(f"\nLoading model from: {checkpoint['path']}")
