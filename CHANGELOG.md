@@ -2,6 +2,186 @@
 
 All notable changes to the VWL Simulation project are documented here.
 
+## [5.0.0] - 2026-02-03
+
+### Added - Major Economy Expansion
+
+#### Labor Market & Skills System
+- **Household Skill Levels** (0.3 to 1.0)
+  - Each household has individual skill rating affecting productivity
+  - Skill-based job matching algorithm
+  - Best skilled workers are matched with highest-paying firms first
+  - Employee skills directly affect firm productivity:
+    - Productivity = Employees × Base (6.0) × Skill Multiplier (0.5 to 1.0)
+    - Skill Multiplier = 0.5 + (avg_employee_skill × 0.5)
+  - Creates realistic labor market competition
+
+#### Bankruptcy Mechanism
+- **Firm Capital System**
+  - Starting capital: 1000-1500 (randomized)
+  - Capital tracks all financial flows:
+    - Wages paid immediately reduce capital
+    - Revenue from sales increases capital
+    - Production, storage, and fixed costs reduce capital
+  - Bankruptcy threshold: Capital < -400
+  - Bankrupt firms:
+    - Receive penalty reward (-20)
+    - Stop participating in markets
+    - Episode ends if all firms bankrupt
+  - Surviving firms get capital bonus in reward (+0 to +5)
+
+#### Extended Action Space (5 Actions)
+- **Price Adjustment** (5 levels): -10%, -5%, 0%, +5%, +10%
+- **Wage Adjustment** (5 levels): -10%, -5%, 0%, +5%, +10%
+- **Marketing Investment** (3 levels):
+  - Decrease marketing level (-0.1, free)
+  - Keep current level (no cost)
+  - Increase marketing level (+0.1, costs 20)
+  - Affects utility calculation for consumers
+- **Quality Improvement** (2 levels):
+  - Don't improve (no cost)
+  - Improve quality (+0.05, costs 30)
+  - Affects utility calculation for consumers
+- **Capacity Management** (3 levels):
+  - Decrease max employees by 1 (free)
+  - Keep current capacity (no cost)
+  - Increase max employees by 1 (costs 50)
+  - Allows dynamic workforce scaling
+
+#### Enhanced Utility-Based Market
+- **Consumer Utility Function**:
+  - Utility = (Quality × 0.5 + Marketing × 0.3) / (Price × 1.0)
+  - Households buy from firm with highest utility
+  - Strategic investments in quality/marketing pay off
+- **Household Wealth Types**:
+  - Low wealth (30%): 0.8× consumption rate
+  - Medium wealth (50%): 1.0× consumption rate  
+  - High wealth (20%): 1.2× consumption rate
+  - Creates diverse consumer behavior
+
+#### Expanded Observation Space (20 Features)
+- Own firm state: price, wage, employees, inventory, capital, quality, marketing
+- Market statistics: avg/min/max prices and wages
+- Employment: total employed, unemployment rate
+- Household data: average money, average skill level
+- Competition: number of competitors still active
+- Performance: profit from last step
+- Progress: current timestep / max steps
+
+### Changed - Balanced Economics
+
+#### Production Parameters (BALANCED)
+- **Productivity**: 5.0 → **6.0** units per employee
+  - Increased output to improve profitability
+  - Skill multiplier (0.5-1.0) adds variance
+- **Fixed Costs**: 50.0 → **30.0** per step
+  - Reduced cost pressure on firms
+  - More room for strategic investments
+- **Storage Costs**: 0.5 → **0.2** per unit
+  - Less penalty for overproduction
+  - Encourages production capacity utilization
+
+#### Capital & Bankruptcy
+- **Starting Capital**: 500-1000 → **1000-1500**
+  - More initial buffer for firms
+  - Allows early investments in marketing/quality
+- **Bankruptcy Threshold**: -200 → **-400**
+  - More forgiving for temporary losses
+  - Firms can survive 90+ steps with 30% sales rate
+
+#### Market Dynamics
+- **Consumption Rate**: 60% → **70%**
+  - Households spend more of their money
+  - Increases market demand and sales opportunities
+  - Market supports ~71% sales rate per firm on average
+
+#### Economic Balance Results
+- Break-even at ~24% sales rate (easily achievable)
+- Positive profit from 30% sales rate onwards
+- At 50% sales: +189 profit per step
+- At 70% sales: +339 profit per step
+- Challenge Rating: ⭐⭐⭐ (Challenging but fair)
+
+#### Training Configuration
+- **Iterations**: 10 → **50** (more thorough training)
+- **Batch Size**: 400 → **4000** (better learning stability)
+- **Minibatch Size**: 128 → **256** (improved gradient estimates)
+- **Workers**: 2 → **4** (more diverse experiences)
+
+### Fixed - Windows Compatibility
+
+#### UTF-8 Encoding Issues
+- **Problem**: Windows default encoding (CP1252) couldn't read config.yaml with Unicode characters
+- **Solution**: Added explicit `encoding='utf-8'` to YAML file loading
+- **Files Fixed**:
+  - `train.py`: Line 34
+  - `env/economy_env.py`: Line 23
+- Now works on Windows, macOS, and Linux
+
+#### Console Output Cleanup
+- **Reduced Verbose Logging**:
+  - Suppressed Ray initialization logs
+  - Disabled RLlib verbose output
+  - Hidden checkpoint saving details
+  - Filtered deprecation warnings
+- **Clean Training Output**:
+  ```
+  VWL SIMULATION - TRAINING
+  Fresh training: 50 iterations
+  Environment: 10 firms, 50 households
+  
+  Iter   Reward       Min        Max        EpLen
+  1      -5.23        -8.50      -2.10      100
+  ...
+  ```
+
+### Technical Details
+
+#### Action Space Structure
+```python
+MultiDiscrete([5, 5, 3, 2, 3])
+# [price_adjust, wage_adjust, marketing, quality, capacity]
+```
+
+#### Reward Function
+```python
+reward = (profit / 100.0) + capital_bonus
+# capital_bonus = min(capital / 1000.0, 5.0) if capital > 0
+# Bankrupt firms: -20 penalty
+```
+
+#### Observation Vector (20 features)
+```python
+[
+  # Own state (7)
+  price, wage, employees, inventory, capital/100, quality, marketing,
+  # Market stats (6)
+  market_avg_price, market_min_price, market_max_price,
+  market_avg_wage, market_min_wage, market_max_wage,
+  # Aggregates (4)
+  total_employed, unemployment_rate, avg_household_money/10, avg_household_skill,
+  # Meta (3)
+  profit_last_step/100, competitors_alive, timestep/max_steps
+]
+```
+
+#### Economic Formulas
+- **Production**: `employees × 6.0 × (0.5 + avg_skill × 0.5)`
+- **Utility**: `(quality × 0.5 + marketing × 0.3) / (price × 1.0)`
+- **Capital**: Updated each step with `revenue - costs - wages`
+
+### Performance Impact
+- Training is now more complex but realistic
+- Expected convergence: 30-50 iterations
+- Firms must learn:
+  - Competitive pricing strategies
+  - Wage optimization for skill acquisition  
+  - Strategic investments (marketing/quality)
+  - Capital management to avoid bankruptcy
+  - Capacity planning based on demand
+
+---
+
 ## [4.0.0] - 2026-02-02
 
 ### Added
