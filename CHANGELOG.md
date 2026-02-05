@@ -2,6 +2,167 @@
 
 All notable changes to the VWL Simulation project are documented here.
 
+## [5.1.0] - 2026-02-05
+
+### Added - Database-Ready CSV Export
+
+#### Long Format (Normalized) CSV Output
+- **Changed CSV structure from WIDE to LONG format**
+  - Wide format (old): One row per step, all entities as columns
+  - Long format (new): One row per entity per step
+  - Database-friendly normalized structure
+  - Ready for SQL import with proper foreign keys
+
+#### Separate CSV Files
+- **firms.csv**:
+  - Columns: `version`, `seed`, `step`, `firm_id`, `price`, `wage`, `capital`, `employees`, `max_employees`, `quality`, `marketing`, `profit`, `revenue`, `costs`, `inventory`, `production`, `bankrupt`
+  - One row per firm per timestep
+  - Example: 10 firms × 100 steps = 1,000 rows
+  
+- **households.csv**:
+  - Columns: `version`, `seed`, `step`, `household_id`, `money`, `employer`, `wage`, `skill_level`, `wealth_type`
+  - One row per household per timestep
+  - Example: 50 households × 100 steps = 5,000 rows
+
+#### Multi-Simulation Tracking
+- **Version Column**: Extracted from CHANGELOG.md (e.g., "v5.1.0")
+  - Tracks which model version generated the data
+  - Allows comparing different model iterations
+  - Defaults to "v5.0" if CHANGELOG not found
+  
+- **Seed Column**: Simulation seed for reproducibility
+  - Combines multiple simulations in single database
+  - Query by `(version, seed)` to get specific simulation
+  - Enables statistical analysis across many runs
+
+#### Database Import Benefits
+- **Easy Queries**:
+  ```sql
+  -- Get all firm data for specific simulation
+  SELECT * FROM firms WHERE version = 'v5.1.0' AND seed = 123456;
+  
+  -- Compare firm performance across versions
+  SELECT version, AVG(profit) FROM firms GROUP BY version;
+  
+  -- Analyze household employment over time
+  SELECT step, COUNT(*) FROM households 
+  WHERE employer != 'None' GROUP BY step;
+  ```
+
+- **Scalability**: Can store thousands of simulations in two tables
+- **Relationships**: Easy joins between firms and households by step
+- **Analytics**: Direct import to data analysis tools (pandas, R, Tableau)
+
+### Added - Unemployment Benefits System
+
+#### State Employer for Jobless Households
+- **Problem**: Previously unemployed households had no income → market collapse
+- **Solution**: Fictional "state" employer provides unemployment benefits
+- **Calculation**: 
+  ```python
+  state_wage = (min(active_firm_wages) + max(active_firm_wages)) / 2.0
+  ```
+- **Effect**: 
+  - Unemployed households receive average wage
+  - Maintains purchasing power in economy
+  - Prevents market from stalling
+  - Realistic economic safety net
+
+#### Tracking State Employment
+- `employer = 'state'` for unemployed households
+- Separate statistics for firm vs state employment
+- Display shows:
+  - Firm Employment: X%
+  - State Employment (Benefits): Y%
+  - Total Employment: X + Y = 100%
+
+### Changed - Simulation Runner Updates
+
+#### Enhanced Output Display
+- Version information in all displays
+- Separate tracking of firm vs state employment
+- Long format data collection during simulation
+- Database import statistics at end
+
+#### File Naming Convention
+```
+firms_checkpoint50_seed123456_20260205_143022.csv
+households_checkpoint50_seed123456_20260205_143022.csv
+summary_seed123456_20260205_143022.txt
+```
+
+#### Summary File Updates
+- Includes CSV format description
+- Row count information (firms × steps, households × steps)
+- Version and seed for reference
+- Database import instructions
+
+### Technical Details
+
+#### Version Extraction
+```python
+def get_version():
+    # Reads CHANGELOG.md
+    # Regex: ## [5.1.0] or ## Version 5.1.0
+    # Returns "v5.1.0"
+    # Default: "v5.0"
+```
+
+#### Data Collection Example
+```python
+# Old (wide format)
+step_data = {
+    'step': 1,
+    'firm_0_price': 25.0, 'firm_0_wage': 20.0,
+    'firm_1_price': 30.0, 'firm_1_wage': 18.0,
+    'hh_0_money': 120.0, 'hh_1_money': 115.0
+}
+
+# New (long format)
+firms_data.append({
+    'version': 'v5.1.0', 'seed': 123456,
+    'step': 1, 'firm_id': 0,
+    'price': 25.0, 'wage': 20.0, ...
+})
+firms_data.append({
+    'version': 'v5.1.0', 'seed': 123456,
+    'step': 1, 'firm_id': 1,
+    'price': 30.0, 'wage': 18.0, ...
+})
+households_data.append({
+    'version': 'v5.1.0', 'seed': 123456,
+    'step': 1, 'household_id': 0,
+    'money': 120.0, ...
+})
+```
+
+### Impact on Workflows
+
+#### For Data Analysis
+- Import CSVs directly to SQL database
+- Use pandas for immediate analysis:
+  ```python
+  firms = pd.read_csv('firms_checkpoint50_seed123456.csv')
+  households = pd.read_csv('households_checkpoint50_seed123456.csv')
+  
+  # Merge for analysis
+  merged = firms.merge(households, on=['version', 'seed', 'step'])
+  ```
+
+#### For Multi-Simulation Studies
+- Run multiple simulations with different seeds
+- Append all data to single database
+- Query across all simulations for statistical significance
+- Compare model versions side-by-side
+
+#### For Reproducibility
+- Every row tagged with version and seed
+- Complete traceability of simulation origins
+- Easy to reproduce specific simulations
+- Version control friendly (text-based CSVs)
+
+---
+
 ## [5.0.0] - 2026-02-03
 
 ### Added - Major Economy Expansion
