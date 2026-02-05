@@ -11,6 +11,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
     - Household skill levels and job matching
     - Firm bankruptcy mechanism
     - Extended action space (price, wage, marketing, quality, capacity)
+    - Unemployment benefits (state employer for jobless households)
     - Balanced economic parameters for challenging but fair gameplay
     """
     
@@ -20,7 +21,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         # Load default config from YAML
         config_path = Path(__file__).parent.parent / "config.yaml"
         if config_path.exists():
-            with open(config_path, 'r', encoding='utf-8') as f:  # FIX: Added UTF-8 encoding
+            with open(config_path, 'r', encoding='utf-8') as f:
                 default_config = yaml.safe_load(f)
         else:
             default_config = {}
@@ -55,10 +56,10 @@ class SimpleEconomyEnv(MultiAgentEnv):
         
         # Production parameters (BALANCED)
         prod_cfg = econ_cfg.get('production', {})
-        self.productivity_base = prod_cfg.get('productivity_per_employee', 6.0)  # Increased from 5.0
+        self.productivity_base = prod_cfg.get('productivity_per_employee', 6.0)
         self.production_cost_per_unit = prod_cfg.get('cost_per_unit', 2.0)
-        self.fixed_costs = prod_cfg.get('fixed_costs', 30.0)  # Reduced from 50.0
-        self.storage_cost_per_unit = prod_cfg.get('storage_cost_per_unit', 0.2)  # Reduced from 0.5
+        self.fixed_costs = prod_cfg.get('fixed_costs', 30.0)
+        self.storage_cost_per_unit = prod_cfg.get('storage_cost_per_unit', 0.2)
         
         # Investment costs
         self.marketing_cost_per_level = 20.0
@@ -67,7 +68,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         
         # Household parameters
         hh_cfg = econ_cfg.get('households', {})
-        self.consumption_rate = hh_cfg.get('consumption_rate', 0.7)  # Increased from 0.6
+        self.consumption_rate = hh_cfg.get('consumption_rate', 0.7)
         self.utility_price_weight = hh_cfg.get('utility_price_weight', 1.0)
         self.utility_quality_weight = hh_cfg.get('utility_quality_weight', 0.5)
         self.utility_marketing_weight = 0.3
@@ -84,7 +85,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         self.wage_max = wage_bounds['max']
         
         # Bankruptcy threshold
-        self.bankruptcy_threshold = -400.0  # More forgiving than -200
+        self.bankruptcy_threshold = -400.0
         
         self._agent_ids = set(f"firm_{i}" for i in range(self.n_firms))
         
@@ -117,7 +118,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         emp_range = firm_ranges.get('max_employees', {'min': 3, 'max': 10})
         money_range = hh_ranges.get('money', {'min': 100.0, 'max': 200.0})
         
-        # Initialize firms with higher starting capital
+        # Initialize firms
         self.firms = {}
         for i in range(self.n_firms):
             self.firms[f"firm_{i}"] = {
@@ -127,7 +128,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 'employees': 0,
                 'inventory': 0.0,
                 'production': 0.0,
-                'capital': np.random.uniform(1000.0, 1500.0),  # Increased from 500-1000
+                'capital': np.random.uniform(1000.0, 1500.0),
                 'profit': 0.0,
                 'profit_last_step': 0.0,
                 'revenue': 0.0,
@@ -160,7 +161,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         
         # Phase 1: Firms take strategic actions
         for agent_id in active_firms:
-            action = action_dict.get(agent_id, [2, 2, 1, 0, 1])  # Default: no change
+            action = action_dict.get(agent_id, [2, 2, 1, 0, 1])
             firm = self.firms[agent_id]
             
             price_action = action[0]
@@ -182,25 +183,25 @@ class SimpleEconomyEnv(MultiAgentEnv):
             firm['wage'] = np.clip(firm['wage'], self.wage_min, self.wage_max)
             
             # Marketing investment
-            if marketing_action == 0:  # Decrease
+            if marketing_action == 0:
                 firm['marketing'] = max(0.1, firm['marketing'] - 0.1)
-            elif marketing_action == 2:  # Increase
+            elif marketing_action == 2:
                 cost = self.marketing_cost_per_level
                 if firm['capital'] >= cost:
                     firm['capital'] -= cost
                     firm['marketing'] = min(1.0, firm['marketing'] + 0.1)
             
             # Quality improvement
-            if quality_action == 1:  # Improve
+            if quality_action == 1:
                 cost = self.quality_improvement_cost
                 if firm['capital'] >= cost:
                     firm['capital'] -= cost
                     firm['quality'] = min(1.0, firm['quality'] + 0.05)
             
             # Capacity adjustment
-            if capacity_action == 0:  # Decrease by 1
+            if capacity_action == 0:
                 firm['max_employees'] = max(1, firm['max_employees'] - 1)
-            elif capacity_action == 2:  # Increase by 1
+            elif capacity_action == 2:
                 cost = self.capacity_expansion_cost
                 if firm['capital'] >= cost:
                     firm['capital'] -= cost
@@ -244,6 +245,18 @@ class SimpleEconomyEnv(MultiAgentEnv):
                     firm['capital'] -= firm['wage']
                     break
         
+        # NEW: Unemployment benefits - state employs jobless households
+        if active_firms:
+            # Calculate state wage: average of min and max wage from active firms
+            wages = [self.firms[aid]['wage'] for aid in active_firms]
+            state_wage = (min(wages) + max(wages)) / 2.0
+            
+            for household in self.households:
+                if household['employer'] is None:
+                    household['employer'] = 'state'
+                    household['wage'] = state_wage
+                    household['money'] += state_wage
+        
         # Phase 3: Production (skill affects productivity)
         for agent_id in active_firms:
             firm = self.firms[agent_id]
@@ -251,7 +264,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
             if firm['employees'] > 0:
                 # Average skill of employees affects productivity
                 avg_skill = np.mean(firm['employee_skills'])
-                skill_multiplier = 0.5 + (avg_skill * 0.5)  # 0.5 to 1.0 multiplier
+                skill_multiplier = 0.5 + (avg_skill * 0.5)
                 
                 # Production = employees × base_productivity × skill_multiplier
                 production = firm['employees'] * self.productivity_base * skill_multiplier
@@ -317,7 +330,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
             firm = self.firms[agent_id]
             
             if firm['bankrupt']:
-                rewards[agent_id] = -10.0  # Penalty for being bankrupt
+                rewards[agent_id] = -10.0
                 continue
             
             # Revenue from sales
@@ -341,16 +354,16 @@ class SimpleEconomyEnv(MultiAgentEnv):
             # Update capital
             firm['capital'] += profit
             
-            # Check bankruptcy (more forgiving threshold)
+            # Check bankruptcy
             if firm['capital'] < self.bankruptcy_threshold:
                 firm['bankrupt'] = True
                 self.bankruptcies_this_episode += 1
-                rewards[agent_id] = -20.0  # Large penalty for bankruptcy
+                rewards[agent_id] = -20.0
             else:
                 # Reward is profit scaled, with bonus for positive capital
                 capital_bonus = 0.0
                 if firm['capital'] > 0:
-                    capital_bonus = min(firm['capital'] / 1000.0, 5.0)  # Cap bonus at 5
+                    capital_bonus = min(firm['capital'] / 1000.0, 5.0)
                 
                 rewards[agent_id] = (profit / self.reward_scale) + capital_bonus
         
@@ -391,7 +404,6 @@ class SimpleEconomyEnv(MultiAgentEnv):
         active_firms = [f for aid, f in self.firms.items() if not f['bankrupt']]
         
         if not active_firms:
-            # All firms bankrupt - return safe defaults
             return np.zeros(20, dtype=np.float32)
         
         # Market statistics
@@ -406,7 +418,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         market_min_wage = np.min(all_wages)
         market_max_wage = np.max(all_wages)
         
-        # Employment statistics
+        # Employment statistics (only count firm employment, not state)
         total_employed = sum(f['employees'] for f in active_firms)
         unemployment_rate = 1.0 - (total_employed / self.n_households)
         
@@ -422,7 +434,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
             firm['wage'],
             firm['employees'],
             firm['inventory'],
-            firm['capital'] / 100.0,  # Scale down capital
+            firm['capital'] / 100.0,
             firm['quality'],
             firm['marketing'],
             market_avg_price,
@@ -433,7 +445,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
             market_max_wage,
             total_employed,
             unemployment_rate,
-            avg_household_money / 10.0,  # Scale down
+            avg_household_money / 10.0,
             avg_household_skill,
             firm['profit_last_step'] / self.reward_scale,
             competitors_alive,
