@@ -24,12 +24,28 @@ initial_ranges:
     max_employees:
       min: 3                     # Minimum capacity
       max: 10                    # Maximum capacity
+    capital:
+      min: 1000.0                # Minimum starting capital
+      max: 1500.0                # Maximum starting capital
+    quality:
+      min: 0.5                   # Minimum initial quality
+      max: 0.8                   # Maximum initial quality
+    marketing:
+      min: 0.3                   # Minimum initial marketing level
+      max: 0.6                   # Maximum initial marketing level
   
   # Household starting values
   households:
     money:
       min: 100.0                 # Minimum starting capital
       max: 200.0                 # Maximum starting capital
+    skill_level:
+      min: 0.3                   # Minimum skill (low qualified)
+      max: 1.0                   # Maximum skill (highly qualified)
+    wealth_distribution:         # Probability distribution
+      low: 0.3                   # 30% low wealth households
+      medium: 0.5                # 50% medium wealth households
+      high: 0.2                  # 20% high wealth households
 
 # ============================================================================
 # TRAINING CONFIGURATION
@@ -74,31 +90,53 @@ economy:
   
   # Production parameters (BALANCED)
   production:
-    productivity_per_employee: 6.0      # Base units per employee (increased from 5.0)
+    productivity_per_employee: 6.0      # Base units per employee
     cost_per_unit: 2.0                  # Variable production cost per unit
-    fixed_costs: 30.0                   # Fixed costs per step (reduced from 50.0)
-    storage_cost_per_unit: 0.2          # Storage cost per unit (reduced from 0.5)
+    fixed_costs: 30.0                   # Fixed costs per step
+    storage_cost_per_unit: 0.2          # Storage cost per unit
+  
+  # Investment costs
+  investment_costs:
+    marketing_per_level: 20.0           # Cost to increase marketing by 0.1
+    quality_improvement: 30.0           # Cost to increase quality by 0.05
+    capacity_expansion: 50.0            # Cost to add 1 employee slot
+  
+  # Bankruptcy
+  bankruptcy:
+    threshold: -400.0                   # Bankrupt if capital falls below this
+    penalty_reward: -20.0               # Reward penalty for bankrupt firms
   
   # Household behavior
   households:
-    consumption_rate: 0.7               # % of money spent per step (increased from 0.6)
+    consumption_rate: 0.7               # % of money spent per step
     utility_price_weight: 1.0           # Weight of price in utility calculation
     utility_quality_weight: 0.5         # Weight of quality in utility
-    # Household types affect spending:
-    # - low: 0.8x consumption (save more)
-    # - medium: 1.0x consumption
-    # - high: 1.2x consumption (spend more)
-    # Household skills (0.3 to 1.0) affect productivity at firms
+    utility_marketing_weight: 0.3       # Weight of marketing in utility
+    # Wealth type consumption multipliers
+    wealth_multipliers:
+      low: 0.8                          # Low wealth: save more (80% of base)
+      medium: 1.0                       # Medium wealth: normal (100%)
+      high: 1.2                         # High wealth: spend more (120%)
   
-  # Reward scaling
-  reward_scale: 100.0            # Divide profit by this for reward normalization
+  # Skill impact on productivity
+  skill_system:
+    base_multiplier: 0.5                # Minimum productivity multiplier
+    skill_factor: 0.5                   # Additional multiplier from skills
+    # Total multiplier = base_multiplier + (avg_skill * skill_factor)
+    # Range: 0.5 (all unskilled) to 1.0 (all highly skilled)
+  
+  # Reward parameters
+  reward:
+    scale: 100.0                        # Divide profit by this for normalization
+    capital_bonus_divisor: 1000.0       # Divide capital by this for bonus
+    capital_bonus_max: 5.0              # Maximum capital bonus
 
 # ============================================================================
-# BALANCED GAME MECHANICS
+# BALANCED GAME MECHANICS - SUMMARY
 # ============================================================================
 # Firm Mechanics:
-# - Starting capital: 1000-1500 (increased from 500-1000)
-# - Bankruptcy threshold: capital < -400 (more forgiving than -200)
+# - Starting capital: 1000-1500
+# - Bankruptcy threshold: capital < -400
 # - Break-even point: ~24% sales rate (achievable)
 # - Market supports ~71% sales per firm on average
 # - Profitable operation possible with 30%+ sales
@@ -107,7 +145,7 @@ economy:
 # - Households have skill levels (0.3 = low, 1.0 = high)
 # - Best skilled workers match with highest wage firms first
 # - Employee skills affect productivity (0.5-1.0x multiplier)
-# - Wages paid from firm capital immediately
+# - Unemployed get state benefits (avg of min/max wages)
 
 # Goods Market:
 # - Utility = (Quality × 0.5 + Marketing × 0.3) / (Price × 1.0)
@@ -115,7 +153,7 @@ economy:
 # - Inventory system: firms can't sell more than they produce
 
 # Investment Costs:
-# - Marketing +1 level: 20
+# - Marketing +0.1: 20
 # - Quality +0.05: 30
 # - Capacity +1 employee: 50
 
