@@ -11,7 +11,8 @@ class SimpleEconomyEnv(MultiAgentEnv):
     - Household skill levels and job matching
     - Firm bankruptcy mechanism
     - Extended action space (price, wage, marketing, quality, capacity)
-    - Unemployment benefits (state employer for jobless households)
+    - Supplier economy (unemployed work for supply chain companies)
+    - Enhanced observation space (25 features including market share, trends, competitiveness)
     - Balanced economic parameters for challenging but fair gameplay
     - ALL parameters loaded from config.yaml
     """
@@ -109,8 +110,8 @@ class SimpleEconomyEnv(MultiAgentEnv):
         
         self._agent_ids = set(f"firm_{i}" for i in range(self.n_firms))
         
-        # Extended Observation Space (20 features)
-        self._obs_space = Box(low=-1000.0, high=1000.0, shape=(20,), dtype=np.float32)
+        # ENHANCED Observation Space (25 features - added 5 new)
+        self._obs_space = Box(low=-1000.0, high=1000.0, shape=(25,), dtype=np.float32)
         
         # Extended Action Space: [price_change, wage_change, marketing_level, quality_improve, capacity_change]
         self._action_space = MultiDiscrete([5, 5, 3, 2, 3])
@@ -159,6 +160,8 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 'profit_last_step': 0.0,
                 'revenue': 0.0,
                 'costs': 0.0,
+                'sales': 0.0,
+                'sales_last_step': 0.0,  # NEW: Track sales for trend
                 'quality': np.random.uniform(quality_range['min'], quality_range['max']),
                 'marketing': np.random.uniform(marketing_range['min'], marketing_range['max']),
                 'bankrupt': False,
@@ -237,6 +240,10 @@ class SimpleEconomyEnv(MultiAgentEnv):
             # Reset employees for labor market
             firm['employees'] = 0
             firm['employee_skills'] = []
+            
+            # Store last step sales for trend calculation
+            firm['sales_last_step'] = firm['sales']
+            firm['sales'] = 0.0
         
         # Phase 2: Labor market with skill-based matching
         for household in self.households:
@@ -272,16 +279,17 @@ class SimpleEconomyEnv(MultiAgentEnv):
                     firm['capital'] -= firm['wage']
                     break
         
-        # Unemployment benefits - state employs jobless households
+        # CHANGED: Unemployed work for "suppliers" (supply chain companies)
+        # They provide services/materials to the main firms at competitive rates
         if active_firms:
             wages = [self.firms[aid]['wage'] for aid in active_firms]
-            state_wage = (min(wages) + max(wages)) / 2.0
+            supplier_wage = (min(wages) + max(wages)) / 2.0
             
             for household in self.households:
                 if household['employer'] is None:
-                    household['employer'] = 'state'
-                    household['wage'] = state_wage
-                    household['money'] += state_wage
+                    household['employer'] = 'suppliers'  # Changed from 'state'
+                    household['wage'] = supplier_wage
+                    household['money'] += supplier_wage
         
         # Phase 3: Production (skill affects productivity)
         for agent_id in active_firms:
@@ -346,6 +354,10 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 household['money'] -= actual_cost
                 firm['inventory'] -= quantity
         
+        # Update sales tracking
+        for agent_id in active_firms:
+            self.firms[agent_id]['sales'] = total_sales.get(agent_id, 0.0)
+        
         # Phase 5: Calculate profits, update capital, check bankruptcies
         rewards = {}
         
@@ -409,6 +421,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 'employees': self.firms[agent_id]['employees'],
                 'inventory': self.firms[agent_id]['inventory'],
                 'production': self.firms[agent_id]['production'],
+                'sales': self.firms[agent_id]['sales'],
                 'quality': self.firms[agent_id]['quality'],
                 'marketing': self.firms[agent_id]['marketing'],
                 'bankrupt': self.firms[agent_id]['bankrupt'],
@@ -419,14 +432,14 @@ class SimpleEconomyEnv(MultiAgentEnv):
         return obs, rewards, dones, dones, infos
     
     def _get_obs(self, agent_id):
-        """Create observation with comprehensive market data"""
+        """Create observation with comprehensive market data (25 features)"""
         firm = self.firms[agent_id]
         
         # Only consider active (non-bankrupt) firms for market stats
         active_firms = [f for aid, f in self.firms.items() if not f['bankrupt']]
         
         if not active_firms:
-            return np.zeros(20, dtype=np.float32)
+            return np.zeros(25, dtype=np.float32)
         
         # Market statistics
         all_prices = [f['price'] for f in active_firms]
@@ -435,12 +448,14 @@ class SimpleEconomyEnv(MultiAgentEnv):
         market_avg_price = np.mean(all_prices)
         market_min_price = np.min(all_prices)
         market_max_price = np.max(all_prices)
+        market_median_price = np.median(all_prices)
         
         market_avg_wage = np.mean(all_wages)
         market_min_wage = np.min(all_wages)
         market_max_wage = np.max(all_wages)
+        market_median_wage = np.median(all_wages)
         
-        # Employment statistics (only count firm employment, not state)
+        # Employment statistics (only count firm employment, not suppliers)
         total_employed = sum(f['employees'] for f in active_firms)
         unemployment_rate = 1.0 - (total_employed / self.n_households)
         
@@ -451,7 +466,36 @@ class SimpleEconomyEnv(MultiAgentEnv):
         # Competition info
         competitors_alive = len(active_firms)
         
+        # NEW: Calculate market share (based on sales volume)
+        total_market_sales = sum(f['sales'] for f in active_firms)
+        if total_market_sales > 0:
+            own_market_share = firm['sales'] / total_market_sales
+        else:
+            own_market_share = 1.0 / len(active_firms)  # Equal split if no sales yet
+        
+        # NEW: Sales trend (change from last step)
+        sales_trend = firm['sales'] - firm['sales_last_step']
+        
+        # NEW: Inventory ratio (efficiency metric)
+        if firm['production'] > 0:
+            inventory_ratio = firm['inventory'] / firm['production']
+        else:
+            inventory_ratio = 0.0
+        
+        # NEW: Wage competitiveness (how competitive is our wage?)
+        if market_median_wage > 0:
+            wage_competitiveness = firm['wage'] / market_median_wage
+        else:
+            wage_competitiveness = 1.0
+        
+        # NEW: Price competitiveness (are we cheaper or more expensive?)
+        if market_median_price > 0:
+            price_competitiveness = firm['price'] / market_median_price
+        else:
+            price_competitiveness = 1.0
+        
         obs = np.array([
+            # Original 20 features
             firm['price'],
             firm['wage'],
             firm['employees'],
@@ -472,6 +516,12 @@ class SimpleEconomyEnv(MultiAgentEnv):
             firm['profit_last_step'] / self.reward_scale,
             competitors_alive,
             self.timestep / self.max_steps,
+            # NEW: 5 additional strategic features
+            own_market_share,           # 20: % of market we control
+            sales_trend / 10.0,         # 21: Are sales increasing/decreasing?
+            inventory_ratio,            # 22: Inventory efficiency
+            wage_competitiveness,       # 23: Our wage vs. market median
+            price_competitiveness,      # 24: Our price vs. market median
         ], dtype=np.float32)
         
         return np.clip(obs, -1000.0, 1000.0)
