@@ -24,13 +24,12 @@ def get_version():
         try:
             with open(changelog_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-                # Look for version pattern like ## [5.0.0] or ## Version 5.0.0
                 match = re.search(r'##\s*(?:\[)?(?:Version\s+)?(\d+\.\d+\.\d+)', content)
                 if match:
                     return f"v{match.group(1)}"
         except Exception as e:
             print(f"Warning: Could not read CHANGELOG: {e}")
-    return "v5.0"  # Default version
+    return "v5.1"  # Default version
 
 def find_checkpoints():
     """Find all available checkpoints"""
@@ -160,166 +159,81 @@ def get_simulation_config(checkpoint):
     return config
 
 def display_initial_state(env, checkpoint, config):
-    """Display detailed initial state with v5.0 features"""
+    """Display initial state summary"""
     print("\n" + "="*70)
-    print("  INITIAL STATE (v5.0 - Enhanced Economy)")
+    print("  INITIAL STATE")
     print("="*70)
-    print(f"\n[VERSION: {config['version']} | SEED: {config['seed']} | Mode: {config['seed_mode']}]")
+    print(f"Version: {config['version']} | Seed: {config['seed']}")
     print("-" * 70)
     
-    # Firms with v5.0 features
-    print("\n[FIRMS]")
-    print("-" * 70)
-    for i in range(checkpoint['n_firms']):
-        firm_id = f"firm_{i}"
-        firm = env.firms[firm_id]
-        print(f"Firm {i}:")
-        print(f"  - Price: {firm['price']:.2f} | Wage: {firm['wage']:.2f}")
-        print(f"  - Capital: {firm['capital']:.2f} | Capacity: {firm['max_employees']} employees")
-        print(f"  - Quality: {firm['quality']:.2f} | Marketing: {firm['marketing']:.2f}")
-        print(f"  - Employees: {firm['employees']} | Bankrupt: {firm['bankrupt']}")
-        print()
+    # Firm statistics
+    avg_price = np.mean([f['price'] for f in env.firms.values()])
+    avg_wage = np.mean([f['wage'] for f in env.firms.values()])
+    avg_capital = np.mean([f['capital'] for f in env.firms.values()])
+    avg_quality = np.mean([f['quality'] for f in env.firms.values()])
+    avg_marketing = np.mean([f['marketing'] for f in env.firms.values()])
     
-    # Households with skill levels
-    print("\n[HOUSEHOLDS] (showing first 10 of {})\n".format(checkpoint['n_households']))
-    print(f"{'ID':<4} {'Money':<8} {'Skill':<6} {'Wealth':<8} {'Employer':<12} {'Wage':<6}")
-    print("-" * 70)
-    for i, hh in enumerate(env.households[:10]):
-        employer_str = hh['employer'] if hh['employer'] else 'Unemployed'
-        wage_str = f"{hh['wage']:.2f}" if hh['employer'] else 'N/A'
-        print(f"{i:<4} {hh['money']:<8.2f} {hh['skill_level']:<6.2f} "
-              f"{hh['wealth_type']:<8} {employer_str:<12} {wage_str:<6}")
+    print(f"\nFirms ({checkpoint['n_firms']})")
+    print(f"  Avg Price: {avg_price:.2f} | Avg Wage: {avg_wage:.2f}")
+    print(f"  Avg Capital: {avg_capital:.2f} | Avg Quality: {avg_quality:.2f}")
+    print(f"  Avg Marketing: {avg_marketing:.2f}")
     
-    if checkpoint['n_households'] > 10:
-        print(f"... and {checkpoint['n_households'] - 10} more households")
-    
-    # Statistics
+    # Household statistics
     employed = sum(1 for hh in env.households if hh['employer'] and hh['employer'] != 'state')
     state_employed = sum(1 for hh in env.households if hh['employer'] == 'state')
     avg_skill = np.mean([hh['skill_level'] for hh in env.households])
     avg_money = np.mean([hh['money'] for hh in env.households])
     
-    print("\n[INITIAL STATISTICS]")
-    print("-" * 70)
-    print(f"Firm Employment: {(employed/checkpoint['n_households']*100):.1f}%")
-    print(f"State Employment (Unemployment Benefits): {(state_employed/checkpoint['n_households']*100):.1f}%")
-    print(f"Average Skill Level: {avg_skill:.2f}")
-    print(f"Average Household Money: {avg_money:.2f}")
-    print(f"Total Market Capital: {sum(f['capital'] for f in env.firms.values()):.2f}")
+    print(f"\nHouseholds ({checkpoint['n_households']})")
+    print(f"  Firm Employed: {employed} ({(employed/checkpoint['n_households']*100):.1f}%)")
+    print(f"  State Employed: {state_employed} ({(state_employed/checkpoint['n_households']*100):.1f}%)")
+    print(f"  Avg Skill: {avg_skill:.2f} | Avg Money: {avg_money:.2f}")
     print("="*70)
 
-def save_initial_state(env, checkpoint, config, output_dir):
-    """Save initial state with v5.0 features"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # Firms with v5.0 features
-    firms_data = []
-    for i in range(checkpoint['n_firms']):
-        firm_id = f"firm_{i}"
-        firm = env.firms[firm_id]
-        firms_data.append({
-            'version': config['version'],
-            'seed': config['seed'],
-            'firm_id': i,
-            'initial_price': firm['price'],
-            'initial_wage': firm['wage'],
-            'initial_capital': firm['capital'],
-            'max_employees': firm['max_employees'],
-            'initial_quality': firm['quality'],
-            'initial_marketing': firm['marketing'],
-            'seed_mode': config['seed_mode']
-        })
-    
-    firms_df = pd.DataFrame(firms_data)
-    firms_file = output_dir / f"initial_firms_{timestamp}.csv"
-    firms_df.to_csv(firms_file, index=False)
-    
-    # Households with skill levels
-    households_data = []
-    for i, hh in enumerate(env.households):
-        households_data.append({
-            'version': config['version'],
-            'seed': config['seed'],
-            'household_id': i,
-            'initial_money': hh['money'],
-            'skill_level': hh['skill_level'],
-            'wealth_type': hh['wealth_type'],
-            'initial_employer': hh['employer'] if hh['employer'] else 'None',
-            'initial_wage': hh['wage'],
-            'seed_mode': config['seed_mode']
-        })
-    
-    households_df = pd.DataFrame(households_data)
-    households_file = output_dir / f"initial_households_{timestamp}.csv"
-    households_df.to_csv(households_file, index=False)
-    
-    print(f"\nInitial state saved:")
-    print(f"  - Firms: {firms_file}")
-    print(f"  - Households: {households_file}")
-
-def display_final_state(env, checkpoint):
-    """Display final state with v5.0 features"""
+def display_final_state(env, checkpoint, total_steps):
+    """Display final state summary"""
     print("\n" + "="*70)
     print("  FINAL STATE")
     print("="*70)
-    
-    # Firms with v5.0 metrics
-    print("\n[FIRMS]")
+    print(f"Simulation completed: {total_steps} steps")
     print("-" * 70)
-    bankruptcies = 0
-    for i in range(checkpoint['n_firms']):
-        firm_id = f"firm_{i}"
-        firm = env.firms[firm_id]
-        status = "BANKRUPT" if firm['bankrupt'] else "Active"
-        if firm['bankrupt']:
-            bankruptcies += 1
+    
+    # Firm statistics
+    bankruptcies = sum(1 for f in env.firms.values() if f['bankrupt'])
+    active_firms = [f for f in env.firms.values() if not f['bankrupt']]
+    
+    if active_firms:
+        avg_price = np.mean([f['price'] for f in active_firms])
+        avg_wage = np.mean([f['wage'] for f in active_firms])
+        avg_capital = np.mean([f['capital'] for f in active_firms])
+        avg_quality = np.mean([f['quality'] for f in active_firms])
+        avg_marketing = np.mean([f['marketing'] for f in active_firms])
+        avg_profit = np.mean([f['profit'] for f in active_firms])
         
-        print(f"Firm {i} [{status}]:")
-        print(f"  - Price: {firm['price']:.2f} | Wage: {firm['wage']:.2f}")
-        print(f"  - Capital: {firm['capital']:.2f} | Employees: {firm['employees']}/{firm['max_employees']}")
-        print(f"  - Quality: {firm['quality']:.2f} | Marketing: {firm['marketing']:.2f}")
-        print(f"  - Profit: {firm['profit']:.2f} | Revenue: {firm['revenue']:.2f} | Costs: {firm['costs']:.2f}")
-        print(f"  - Inventory: {firm['inventory']:.2f}")
-        print()
+        print(f"\nFirms (Active: {len(active_firms)}/{checkpoint['n_firms']})")
+        print(f"  Bankruptcies: {bankruptcies}")
+        print(f"  Avg Price: {avg_price:.2f} | Avg Wage: {avg_wage:.2f}")
+        print(f"  Avg Capital: {avg_capital:.2f} | Avg Profit: {avg_profit:.2f}")
+        print(f"  Avg Quality: {avg_quality:.2f} | Avg Marketing: {avg_marketing:.2f}")
+    else:
+        print(f"\nFirms: ALL BANKRUPT ({bankruptcies}/{checkpoint['n_firms']})")
     
-    # Households summary
-    print("\n[HOUSEHOLDS SUMMARY]")
-    print("-" * 70)
+    # Household statistics
     employed = sum(1 for hh in env.households if hh['employer'] and hh['employer'] != 'state')
     state_employed = sum(1 for hh in env.households if hh['employer'] == 'state')
     total_money = sum(hh['money'] for hh in env.households)
     avg_money = total_money / len(env.households)
     
-    # Skill distribution
-    skills = [hh['skill_level'] for hh in env.households]
-    avg_skill = np.mean(skills)
-    
-    # Wealth type distribution
-    wealth_counts = {'low': 0, 'medium': 0, 'high': 0}
-    for hh in env.households:
-        wealth_counts[hh['wealth_type']] += 1
-    
-    print(f"Total Households: {len(env.households)}")
-    print(f"Firm Employed: {employed} ({(employed/len(env.households)*100):.1f}%)")
-    print(f"State Employed (Benefits): {state_employed} ({(state_employed/len(env.households)*100):.1f}%)")
-    print(f"Average Money: {avg_money:.2f}")
-    print(f"Average Skill: {avg_skill:.2f}")
-    print(f"Wealth Distribution: Low={wealth_counts['low']}, "
-          f"Medium={wealth_counts['medium']}, High={wealth_counts['high']}")
-    
-    print("\n[FINAL STATISTICS]")
-    print("-" * 70)
-    print(f"Bankruptcies: {bankruptcies}/{checkpoint['n_firms']}")
-    print(f"Active Firms: {checkpoint['n_firms'] - bankruptcies}")
-    print(f"Firm Employment Rate: {(employed/len(env.households)*100):.1f}%")
-    print(f"Total Household Money: {total_money:.2f}")
-    print(f"Total Firm Capital: {sum(f['capital'] for f in env.firms.values()):.2f}")
+    print(f"\nHouseholds ({checkpoint['n_households']})")
+    print(f"  Firm Employed: {employed} ({(employed/checkpoint['n_households']*100):.1f}%)")
+    print(f"  State Employed: {state_employed} ({(state_employed/checkpoint['n_households']*100):.1f}%)")
+    print(f"  Avg Money: {avg_money:.2f} | Total Money: {total_money:.2f}")
     print("="*70)
 
 def run_simulation(checkpoint, config):
-    """Run simulation with v5.0 features"""
+    """Run simulation with minimal console output"""
     print("\n" + "="*70)
-    print("  RUNNING SIMULATION (v5.0)")
+    print("  RUNNING SIMULATION")
     print("="*70)
     
     results_dir = Path("./simulation_results")
@@ -328,120 +242,106 @@ def run_simulation(checkpoint, config):
     env_config = checkpoint['env_config'].copy()
     env_config['max_steps'] = config['max_steps']
     
-    print(f"\nEnvironment: {env_config['n_firms']} firms, {env_config['n_households']} households, {env_config['max_steps']} steps")
-    print(f"Loading model from checkpoint {checkpoint['iteration']}...")
+    print(f"\nLoading checkpoint {checkpoint['iteration']}...")
     
-    # Suppress Ray loading output
+    # Suppress ALL Ray output during loading and simulation
     old_stdout = sys.stdout
+    old_stderr = sys.stderr
     sys.stdout = open(os.devnull, 'w')
+    sys.stderr = open(os.devnull, 'w')
+    
     try:
         algo = PPO.from_checkpoint(checkpoint['path'])
         env = SimpleEconomyEnv(env_config)
         obs, info = env.reset(seed=config['seed'])
     finally:
         sys.stdout.close()
+        sys.stderr.close()
         sys.stdout = old_stdout
+        sys.stderr = old_stderr
     
-    print("Model loaded successfully.")
+    print("Model loaded.")
     
     display_initial_state(env, checkpoint, config)
-    save_initial_state(env, checkpoint, config, results_dir)
     
-    input("\nPress ENTER to start simulation...")
-    
-    # NEW: Long format data storage
+    # Data storage
     firms_data = []
     households_data = []
     
-    print("\nSimulation running...\n")
-    print("="*70)
+    print("\nRunning simulation...")
     
     done = False
     step = 0
     
-    while not done and step < config['max_steps']:
-        # Get actions
-        actions = {}
-        for agent_id in obs.keys():
-            action, _, _ = algo.get_policy("shared_policy").compute_single_action(obs[agent_id])
-            actions[agent_id] = action
-        
-        # Step
-        obs, rewards, dones, truncated, info = env.step(actions)
-        
-        # NEW: Collect data in LONG format for database
-        current_step = step + 1
-        
-        # Firm data - one row per firm per step
-        for i in range(checkpoint['n_firms']):
-            firm_id = f"firm_{i}"
-            firm = env.firms[firm_id]
+    # Suppress Ray output during simulation
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    sys.stdout = open(os.devnull, 'w')
+    sys.stderr = open(os.devnull, 'w')
+    
+    try:
+        while not done and step < config['max_steps']:
+            # Get actions
+            actions = {}
+            for agent_id in obs.keys():
+                action, _, _ = algo.get_policy("shared_policy").compute_single_action(obs[agent_id])
+                actions[agent_id] = action
             
-            firms_data.append({
-                'version': config['version'],
-                'seed': config['seed'],
-                'step': current_step,
-                'firm_id': i,
-                'price': firm['price'],
-                'wage': firm['wage'],
-                'capital': firm['capital'],
-                'employees': firm['employees'],
-                'max_employees': firm['max_employees'],
-                'quality': firm['quality'],
-                'marketing': firm['marketing'],
-                'profit': firm['profit'],
-                'revenue': firm['revenue'],
-                'costs': firm['costs'],
-                'inventory': firm['inventory'],
-                'production': firm['production'],
-                'bankrupt': firm['bankrupt']
-            })
-        
-        # Household data - one row per household per step
-        for i, hh in enumerate(env.households):
-            households_data.append({
-                'version': config['version'],
-                'seed': config['seed'],
-                'step': current_step,
-                'household_id': i,
-                'money': hh['money'],
-                'employer': hh['employer'] if hh['employer'] else 'None',
-                'wage': hh['wage'],
-                'skill_level': hh['skill_level'],
-                'wealth_type': hh['wealth_type']
-            })
-        
-        # Print every 10 steps
-        if step % 10 == 0 or step == 0 or step == config['max_steps'] - 1:
-            bankruptcies = sum(1 for f in env.firms.values() if f['bankrupt'])
-            employed = sum(1 for hh in env.households if hh['employer'] and hh['employer'] != 'state')
-            state_employed = sum(1 for hh in env.households if hh['employer'] == 'state')
-            total_money = sum(hh['money'] for hh in env.households)
+            # Step
+            obs, rewards, dones, truncated, info = env.step(actions)
             
-            print(f"\nStep {current_step}/{config['max_steps']}")
-            print("-" * 70)
+            current_step = step + 1
             
-            for i in range(min(3, checkpoint['n_firms'])):  # Show first 3 firms
+            # Collect data in LONG format
+            for i in range(checkpoint['n_firms']):
                 firm_id = f"firm_{i}"
                 firm = env.firms[firm_id]
-                status = "[BANKRUPT]" if firm['bankrupt'] else ""
-                print(f"Firm {i}{status}: Price={firm['price']:.2f} | Wage={firm['wage']:.2f} | "
-                      f"Capital={firm['capital']:.2f} | Employees={firm['employees']}/{firm['max_employees']} | "
-                      f"Profit={firm['profit']:.2f}")
+                
+                firms_data.append({
+                    'version': config['version'],
+                    'seed': config['seed'],
+                    'step': current_step,
+                    'firm_id': i,
+                    'price': firm['price'],
+                    'wage': firm['wage'],
+                    'capital': firm['capital'],
+                    'employees': firm['employees'],
+                    'max_employees': firm['max_employees'],
+                    'quality': firm['quality'],
+                    'marketing': firm['marketing'],
+                    'profit': firm['profit'],
+                    'revenue': firm['revenue'],
+                    'costs': firm['costs'],
+                    'inventory': firm['inventory'],
+                    'production': firm['production'],
+                    'bankrupt': firm['bankrupt']
+                })
             
-            if checkpoint['n_firms'] > 3:
-                print(f"  ... and {checkpoint['n_firms'] - 3} more firms")
+            for i, hh in enumerate(env.households):
+                households_data.append({
+                    'version': config['version'],
+                    'seed': config['seed'],
+                    'step': current_step,
+                    'household_id': i,
+                    'money': hh['money'],
+                    'employer': hh['employer'] if hh['employer'] else 'None',
+                    'wage': hh['wage'],
+                    'skill_level': hh['skill_level'],
+                    'wealth_type': hh['wealth_type']
+                })
             
-            avg_money = total_money / len(env.households)
-            print(f"\nMarket: Bankruptcies={bankruptcies} | Firm Employed={employed} ({(employed/len(env.households)*100):.1f}%) | "
-                  f"State Employed={state_employed} ({(state_employed/len(env.households)*100):.1f}%) | "
-                  f"Avg Money={avg_money:.2f}")
-            print("=" * 70)
-        
-        done = dones.get('__all__', False)
-        step += 1
+            done = dones.get('__all__', False)
+            step += 1
     
-    display_final_state(env, checkpoint)
+    finally:
+        sys.stdout.close()
+        sys.stderr.close()
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+    
+    print(f"Simulation complete: {step} steps")
+    
+    display_final_state(env, checkpoint, step)
     
     algo.stop()
     
@@ -465,14 +365,11 @@ def save_results(firms_df, households_df, checkpoint, config, results_dir):
     households_filepath = results_dir / households_filename
     households_df.to_csv(households_filepath, index=False)
     
-    print(f"\nResults saved (long format for database):")
-    print(f"  - Firms: {firms_filepath}")
-    print(f"  - Households: {households_filepath}")
+    print(f"\nResults saved:")
+    print(f"  Firms: {firms_filename}")
+    print(f"  Households: {households_filename}")
     
     # Summary
-    summary_file = results_dir / f"summary_seed{config['seed']}_{timestamp}.txt"
-    
-    # Calculate final statistics
     final_step = firms_df['step'].max()
     final_firms = firms_df[firms_df['step'] == final_step]
     final_households = households_df[households_df['step'] == final_step]
@@ -484,50 +381,39 @@ def save_results(firms_df, households_df, checkpoint, config, results_dir):
     state_employed = (final_households['employer'] == 'state').sum()
     firm_employed = employed - state_employed
     
+    summary_file = results_dir / f"summary_seed{config['seed']}_{timestamp}.txt"
+    
     with open(summary_file, 'w') as f:
         f.write(f"VWL Simulation {config['version']} - Summary\n")
         f.write(f"="*70 + "\n\n")
         f.write(f"Version: {config['version']}\n")
         f.write(f"Checkpoint: Iteration {checkpoint['iteration']}\n")
-        f.write(f"Random Seed: {config['seed']} (Mode: {config['seed_mode']})\n")
+        f.write(f"Seed: {config['seed']} (Mode: {config['seed_mode']})\n")
         f.write(f"Firms: {checkpoint['n_firms']}\n")
         f.write(f"Households: {checkpoint['n_households']}\n")
         f.write(f"Steps: {final_step}\n\n")
-        
         f.write(f"Final State:\n")
         f.write(f"-"*70 + "\n")
         f.write(f"Bankruptcies: {bankruptcies}/{checkpoint['n_firms']}\n")
         f.write(f"Firm Employment: {firm_employed} ({(firm_employed/checkpoint['n_households']*100):.1f}%)\n")
         f.write(f"State Employment: {state_employed} ({(state_employed/checkpoint['n_households']*100):.1f}%)\n")
-        f.write(f"Average Household Money: {final_households['money'].mean():.2f}\n")
+        f.write(f"Avg Household Money: {final_households['money'].mean():.2f}\n")
         f.write(f"Total Household Money: {total_money:.2f}\n")
         f.write(f"Total Firm Capital: {total_capital:.2f}\n\n")
-        
-        f.write(f"CSV Format:\n")
-        f.write(f"-"*70 + "\n")
-        f.write(f"Long format (database-ready)\n")
-        f.write(f"  - firms.csv: {len(firms_df)} rows (firms × steps)\n")
-        f.write(f"  - households.csv: {len(households_df)} rows (households × steps)\n")
-        f.write(f"  - Both include 'version' and 'seed' columns for tracking\n\n")
-        
-        f.write(f"To reproduce:\n")
-        f.write(f"  1. Use checkpoint iteration {checkpoint['iteration']}\n")
-        f.write(f"  2. Enter seed: {config['seed']}\n")
+        f.write(f"Database Info:\n")
+        f.write(f"  - {len(firms_df)} firm records\n")
+        f.write(f"  - {len(households_df)} household records\n\n")
+        f.write(f"To reproduce: Use seed {config['seed']} with checkpoint {checkpoint['iteration']}\n")
     
-    print(f"Summary saved to: {summary_file}")
-    print(f"\nTo reproduce: Use seed {config['seed']} with checkpoint {checkpoint['iteration']}")
-    print(f"\nDatabase Import Info:")
-    print(f"  - {len(firms_df)} firm records ({checkpoint['n_firms']} firms × {final_step} steps)")
-    print(f"  - {len(households_df)} household records ({checkpoint['n_households']} households × {final_step} steps)")
-    print(f"  - Version: {config['version']} | Seed: {config['seed']}")
+    print(f"  Summary: {summary_file.name}")
+    print(f"\nDatabase records: {len(firms_df)} firms, {len(households_df)} households")
     
     return firms_filepath, households_filepath
 
 def main():
     print("\n" + "="*70)
-    print("  VWL SIMULATION v5.0 - CONSOLE RUNNER")
-    print("  Enhanced Economy: Skills | Bankruptcy | Quality | Marketing")
-    print("  Database-Ready Output: Long Format CSV with Version & Seed")
+    print("  VWL SIMULATION v5.1 - CONSOLE RUNNER")
+    print("  Database-Ready Output | Minimal Console Logging")
     print("="*70)
     
     checkpoints = find_checkpoints()
