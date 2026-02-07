@@ -8,6 +8,8 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 class SimpleEconomyEnv(MultiAgentEnv):
     """
     Enhanced economy simulation with:
+    - TOP-3 DIVERSIFIED PURCHASING (v5.3.0) - prevents winner-takes-all monopolies
+    - REWARD SHAPING - market share bonus, inventory penalty, exploration bonus
     - Household skill levels and job matching
     - Firm bankruptcy mechanism
     - Extended action space (price, wage, marketing, quality, capacity)
@@ -19,6 +21,9 @@ class SimpleEconomyEnv(MultiAgentEnv):
     
     def __init__(self, config=None):
         super().__init__()
+        
+        # Version tracking
+        self.version = "v5.3.0"
         
         # Load default config from YAML
         config_path = Path(__file__).parent.parent / "config.yaml"
@@ -46,6 +51,11 @@ class SimpleEconomyEnv(MultiAgentEnv):
         
         # Economic parameters
         econ_cfg = default_config.get('economy', {})
+        
+        # NEW: Top-3 purchasing configuration
+        purchasing_cfg = econ_cfg.get('purchasing', {})
+        self.enable_top3_purchasing = purchasing_cfg.get('enable_top3', True)
+        self.top3_splits = purchasing_cfg.get('splits', [0.5, 0.3, 0.2])  # 50%, 30%, 20%
         
         # Adjustment rates for each action level (5 discrete options)
         self.adjustment_rates = {
@@ -100,6 +110,11 @@ class SimpleEconomyEnv(MultiAgentEnv):
         self.capital_bonus_divisor = reward_cfg.get('capital_bonus_divisor', 1000.0)
         self.capital_bonus_max = reward_cfg.get('capital_bonus_max', 5.0)
         
+        # NEW: Reward shaping parameters
+        self.market_share_bonus_weight = reward_cfg.get('market_share_bonus', 10.0)
+        self.inventory_penalty_weight = reward_cfg.get('inventory_penalty', 2.0)
+        self.exploration_penalty = reward_cfg.get('exploration_penalty', 5.0)
+        
         # Bounds
         price_bounds = econ_cfg.get('price_bounds', {'min': 5.0, 'max': 100.0})
         wage_bounds = econ_cfg.get('wage_bounds', {'min': 5.0, 'max': 50.0})
@@ -110,7 +125,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         
         self._agent_ids = set(f"firm_{i}" for i in range(self.n_firms))
         
-        # ENHANCED Observation Space (25 features - added 5 new)
+        # ENHANCED Observation Space (25 features)
         self._obs_space = Box(low=-1000.0, high=1000.0, shape=(25,), dtype=np.float32)
         
         # Extended Action Space: [price_change, wage_change, marketing_level, quality_improve, capacity_change]
@@ -161,7 +176,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 'revenue': 0.0,
                 'costs': 0.0,
                 'sales': 0.0,
-                'sales_last_step': 0.0,  # NEW: Track sales for trend
+                'sales_last_step': 0.0,
                 'quality': np.random.uniform(quality_range['min'], quality_range['max']),
                 'marketing': np.random.uniform(marketing_range['min'], marketing_range['max']),
                 'bankrupt': False,
@@ -279,15 +294,14 @@ class SimpleEconomyEnv(MultiAgentEnv):
                     firm['capital'] -= firm['wage']
                     break
         
-        # CHANGED: Unemployed work for "suppliers" (supply chain companies)
-        # They provide services/materials to the main firms at competitive rates
+        # Unemployed work for "suppliers" (supply chain companies)
         if active_firms:
             wages = [self.firms[aid]['wage'] for aid in active_firms]
             supplier_wage = (min(wages) + max(wages)) / 2.0
             
             for household in self.households:
                 if household['employer'] is None:
-                    household['employer'] = 'suppliers'  # Changed from 'state'
+                    household['employer'] = 'suppliers'
                     household['wage'] = supplier_wage
                     household['money'] += supplier_wage
         
@@ -307,7 +321,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
             else:
                 firm['production'] = 0.0
         
-        # Phase 4: Goods market with utility-based purchasing
+        # Phase 4: Goods market with TOP-3 DIVERSIFIED PURCHASING
         total_sales = {agent_id: 0.0 for agent_id in active_firms}
         
         for household in self.households:
@@ -340,19 +354,40 @@ class SimpleEconomyEnv(MultiAgentEnv):
             if not utilities:
                 continue
             
-            # Choose firm with highest utility
-            best_firm = max(utilities, key=utilities.get)
-            firm = self.firms[best_firm]
-            
-            # Calculate quantity to buy
-            quantity = budget / firm['price'] if firm['price'] > 0 else 0
-            quantity = min(quantity, firm['inventory'])
-            
-            if quantity > 0:
-                total_sales[best_firm] += quantity
-                actual_cost = quantity * firm['price']
-                household['money'] -= actual_cost
-                firm['inventory'] -= quantity
+            # NEW: TOP-3 DIVERSIFIED PURCHASING (prevents monopolies)
+            if self.enable_top3_purchasing and len(utilities) >= 3:
+                # Sort firms by utility (best first)
+                sorted_firms = sorted(utilities.items(), key=lambda x: x[1], reverse=True)
+                top3_firms = sorted_firms[:3]
+                
+                # Split budget among top 3
+                for i, (firm_id, utility_score) in enumerate(top3_firms):
+                    firm = self.firms[firm_id]
+                    split_budget = budget * self.top3_splits[i]
+                    
+                    # Calculate quantity to buy
+                    quantity = split_budget / firm['price'] if firm['price'] > 0 else 0
+                    quantity = min(quantity, firm['inventory'])
+                    
+                    if quantity > 0:
+                        total_sales[firm_id] += quantity
+                        actual_cost = quantity * firm['price']
+                        household['money'] -= actual_cost
+                        firm['inventory'] -= quantity
+            else:
+                # Fallback: Choose firm with highest utility (old behavior)
+                best_firm = max(utilities, key=utilities.get)
+                firm = self.firms[best_firm]
+                
+                # Calculate quantity to buy
+                quantity = budget / firm['price'] if firm['price'] > 0 else 0
+                quantity = min(quantity, firm['inventory'])
+                
+                if quantity > 0:
+                    total_sales[best_firm] += quantity
+                    actual_cost = quantity * firm['price']
+                    household['money'] -= actual_cost
+                    firm['inventory'] -= quantity
         
         # Update sales tracking
         for agent_id in active_firms:
@@ -360,6 +395,9 @@ class SimpleEconomyEnv(MultiAgentEnv):
         
         # Phase 5: Calculate profits, update capital, check bankruptcies
         rewards = {}
+        
+        # Calculate total market sales for market share
+        total_market_sales = sum(self.firms[aid]['sales'] for aid in active_firms)
         
         for agent_id in self._agent_ids:
             firm = self.firms[agent_id]
@@ -394,12 +432,36 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 self.bankruptcies_this_episode += 1
                 rewards[agent_id] = self.bankruptcy_penalty
             else:
-                # Reward is profit scaled, with bonus for positive capital
+                # ENHANCED REWARD SHAPING
+                # Base reward: profit scaled
+                base_reward = profit / self.reward_scale
+                
+                # Capital bonus (existing)
                 capital_bonus = 0.0
                 if firm['capital'] > 0:
                     capital_bonus = min(firm['capital'] / self.capital_bonus_divisor, self.capital_bonus_max)
                 
-                rewards[agent_id] = (profit / self.reward_scale) + capital_bonus
+                # NEW: Market share bonus (reward gaining market share)
+                market_share_bonus = 0.0
+                if total_market_sales > 0:
+                    own_market_share = firm['sales'] / total_market_sales
+                    market_share_bonus = own_market_share * self.market_share_bonus_weight
+                
+                # NEW: Inventory penalty (punish excessive inventory)
+                inventory_penalty = 0.0
+                if firm['production'] > 0:
+                    inventory_ratio = firm['inventory'] / firm['production']
+                    if inventory_ratio > 1.0:  # More than 1 period worth of inventory
+                        inventory_penalty = -inventory_ratio * self.inventory_penalty_weight
+                
+                # NEW: Exploration penalty (punish zero revenue)
+                exploration_penalty = 0.0
+                if revenue == 0:
+                    exploration_penalty = -self.exploration_penalty
+                
+                # Total reward
+                rewards[agent_id] = (base_reward + capital_bonus + market_share_bonus + 
+                                   inventory_penalty + exploration_penalty)
         
         self.timestep += 1
         done = self.timestep >= self.max_steps
@@ -466,36 +528,36 @@ class SimpleEconomyEnv(MultiAgentEnv):
         # Competition info
         competitors_alive = len(active_firms)
         
-        # NEW: Calculate market share (based on sales volume)
+        # Calculate market share (based on sales volume)
         total_market_sales = sum(f['sales'] for f in active_firms)
         if total_market_sales > 0:
             own_market_share = firm['sales'] / total_market_sales
         else:
             own_market_share = 1.0 / len(active_firms)  # Equal split if no sales yet
         
-        # NEW: Sales trend (change from last step)
+        # Sales trend (change from last step)
         sales_trend = firm['sales'] - firm['sales_last_step']
         
-        # NEW: Inventory ratio (efficiency metric)
+        # Inventory ratio (efficiency metric)
         if firm['production'] > 0:
             inventory_ratio = firm['inventory'] / firm['production']
         else:
             inventory_ratio = 0.0
         
-        # NEW: Wage competitiveness (how competitive is our wage?)
+        # Wage competitiveness (how competitive is our wage?)
         if market_median_wage > 0:
             wage_competitiveness = firm['wage'] / market_median_wage
         else:
             wage_competitiveness = 1.0
         
-        # NEW: Price competitiveness (are we cheaper or more expensive?)
+        # Price competitiveness (are we cheaper or more expensive?)
         if market_median_price > 0:
             price_competitiveness = firm['price'] / market_median_price
         else:
             price_competitiveness = 1.0
         
         obs = np.array([
-            # Original 20 features
+            # Own state (7 features)
             firm['price'],
             firm['wage'],
             firm['employees'],
@@ -503,20 +565,23 @@ class SimpleEconomyEnv(MultiAgentEnv):
             firm['capital'] / 100.0,
             firm['quality'],
             firm['marketing'],
+            # Market statistics (6 features)
             market_avg_price,
             market_min_price,
             market_max_price,
             market_avg_wage,
             market_min_wage,
             market_max_wage,
+            # Aggregates (4 features)
             total_employed,
             unemployment_rate,
             avg_household_money / 10.0,
             avg_household_skill,
+            # Meta (3 features)
             firm['profit_last_step'] / self.reward_scale,
             competitors_alive,
             self.timestep / self.max_steps,
-            # NEW: 5 additional strategic features
+            # Strategic insights (5 features)
             own_market_share,           # 20: % of market we control
             sales_trend / 10.0,         # 21: Are sales increasing/decreasing?
             inventory_ratio,            # 22: Inventory efficiency
