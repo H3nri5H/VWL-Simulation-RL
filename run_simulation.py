@@ -8,7 +8,6 @@ from ray.rllib.algorithms.ppo import PPO
 from env.economy_env import SimpleEconomyEnv
 import warnings
 import numpy as np
-import re
 
 warnings.filterwarnings('ignore')
 os.environ['RAY_DEDUP_LOGS'] = '0'
@@ -16,20 +15,6 @@ os.environ['RAY_DEDUP_LOGS'] = '0'
 # Suppress Ray output
 import logging
 logging.getLogger('ray').setLevel(logging.ERROR)
-
-def get_version():
-    """Extract version from CHANGELOG.md"""
-    changelog_path = Path("./CHANGELOG.md")
-    if changelog_path.exists():
-        try:
-            with open(changelog_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                match = re.search(r'##\s*(?:\[)?(?:Version\s+)?(\d+\.\d+\.\d+)', content)
-                if match:
-                    return f"v{match.group(1)}"
-        except Exception as e:
-            print(f"Warning: Could not read CHANGELOG: {e}")
-    return "v5.1"  # Default version
 
 def find_checkpoints():
     """Find all available checkpoints"""
@@ -152,10 +137,6 @@ def get_simulation_config(checkpoint):
     steps_input = input(f"\nNumber of simulation steps [{default_steps}]: ").strip()
     config['max_steps'] = int(steps_input) if steps_input else default_steps
     
-    # Get version from CHANGELOG
-    config['version'] = get_version()
-    print(f"\nSimulation version: {config['version']}")
-    
     return config
 
 def display_initial_state(env, checkpoint, config):
@@ -163,7 +144,7 @@ def display_initial_state(env, checkpoint, config):
     print("\n" + "="*70)
     print("  INITIAL STATE")
     print("="*70)
-    print(f"Version: {config['version']} | Seed: {config['seed']}")
+    print(f"Seed: {config['seed']}")
     print("-" * 70)
     
     # Firm statistics
@@ -179,14 +160,14 @@ def display_initial_state(env, checkpoint, config):
     print(f"  Avg Marketing: {avg_marketing:.2f}")
     
     # Household statistics
-    employed = sum(1 for hh in env.households if hh['employer'] and hh['employer'] != 'state')
-    state_employed = sum(1 for hh in env.households if hh['employer'] == 'state')
+    employed = sum(1 for hh in env.households if hh['employer'] and hh['employer'] != 'suppliers')
+    suppliers_employed = sum(1 for hh in env.households if hh['employer'] == 'suppliers')
     avg_skill = np.mean([hh['skill_level'] for hh in env.households])
     avg_money = np.mean([hh['money'] for hh in env.households])
     
     print(f"\nHouseholds ({checkpoint['n_households']})")
     print(f"  Firm Employed: {employed} ({(employed/checkpoint['n_households']*100):.1f}%)")
-    print(f"  State Employed: {state_employed} ({(state_employed/checkpoint['n_households']*100):.1f}%)")
+    print(f"  Supplier Employed: {suppliers_employed} ({(suppliers_employed/checkpoint['n_households']*100):.1f}%)")
     print(f"  Avg Skill: {avg_skill:.2f} | Avg Money: {avg_money:.2f}")
     print("="*70)
 
@@ -219,14 +200,14 @@ def display_final_state(env, checkpoint, total_steps):
         print(f"\nFirms: ALL BANKRUPT ({bankruptcies}/{checkpoint['n_firms']})")
     
     # Household statistics
-    employed = sum(1 for hh in env.households if hh['employer'] and hh['employer'] != 'state')
-    state_employed = sum(1 for hh in env.households if hh['employer'] == 'state')
+    employed = sum(1 for hh in env.households if hh['employer'] and hh['employer'] != 'suppliers')
+    suppliers_employed = sum(1 for hh in env.households if hh['employer'] == 'suppliers')
     total_money = sum(hh['money'] for hh in env.households)
     avg_money = total_money / len(env.households)
     
     print(f"\nHouseholds ({checkpoint['n_households']})")
     print(f"  Firm Employed: {employed} ({(employed/checkpoint['n_households']*100):.1f}%)")
-    print(f"  State Employed: {state_employed} ({(state_employed/checkpoint['n_households']*100):.1f}%)")
+    print(f"  Supplier Employed: {suppliers_employed} ({(suppliers_employed/checkpoint['n_households']*100):.1f}%)")
     print(f"  Avg Money: {avg_money:.2f} | Total Money: {total_money:.2f}")
     print("="*70)
 
@@ -298,7 +279,6 @@ def run_simulation(checkpoint, config):
                 firm = env.firms[firm_id]
                 
                 firms_data.append({
-                    'version': config['version'],
                     'seed': config['seed'],
                     'step': current_step,
                     'firm_id': i,
@@ -314,12 +294,12 @@ def run_simulation(checkpoint, config):
                     'costs': firm['costs'],
                     'inventory': firm['inventory'],
                     'production': firm['production'],
+                    'sales': firm['sales'],
                     'bankrupt': firm['bankrupt']
                 })
             
             for i, hh in enumerate(env.households):
                 households_data.append({
-                    'version': config['version'],
                     'seed': config['seed'],
                     'step': current_step,
                     'household_id': i,
@@ -378,15 +358,14 @@ def save_results(firms_df, households_df, checkpoint, config, results_dir):
     total_capital = final_firms['capital'].sum()
     total_money = final_households['money'].sum()
     employed = (final_households['employer'] != 'None').sum()
-    state_employed = (final_households['employer'] == 'state').sum()
-    firm_employed = employed - state_employed
+    suppliers_employed = (final_households['employer'] == 'suppliers').sum()
+    firm_employed = employed - suppliers_employed
     
     summary_file = results_dir / f"summary_seed{config['seed']}_{timestamp}.txt"
     
     with open(summary_file, 'w') as f:
-        f.write(f"VWL Simulation {config['version']} - Summary\n")
+        f.write(f"VWL Simulation - Summary\n")
         f.write(f"="*70 + "\n\n")
-        f.write(f"Version: {config['version']}\n")
         f.write(f"Checkpoint: Iteration {checkpoint['iteration']}\n")
         f.write(f"Seed: {config['seed']} (Mode: {config['seed_mode']})\n")
         f.write(f"Firms: {checkpoint['n_firms']}\n")
@@ -396,7 +375,7 @@ def save_results(firms_df, households_df, checkpoint, config, results_dir):
         f.write(f"-"*70 + "\n")
         f.write(f"Bankruptcies: {bankruptcies}/{checkpoint['n_firms']}\n")
         f.write(f"Firm Employment: {firm_employed} ({(firm_employed/checkpoint['n_households']*100):.1f}%)\n")
-        f.write(f"State Employment: {state_employed} ({(state_employed/checkpoint['n_households']*100):.1f}%)\n")
+        f.write(f"Supplier Employment: {suppliers_employed} ({(suppliers_employed/checkpoint['n_households']*100):.1f}%)\n")
         f.write(f"Avg Household Money: {final_households['money'].mean():.2f}\n")
         f.write(f"Total Household Money: {total_money:.2f}\n")
         f.write(f"Total Firm Capital: {total_capital:.2f}\n\n")
@@ -412,7 +391,7 @@ def save_results(firms_df, households_df, checkpoint, config, results_dir):
 
 def main():
     print("\n" + "="*70)
-    print("  VWL SIMULATION v5.1 - CONSOLE RUNNER")
+    print("  VWL SIMULATION - CONSOLE RUNNER")
     print("  Database-Ready Output | Minimal Console Logging")
     print("="*70)
     
