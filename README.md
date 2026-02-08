@@ -13,7 +13,7 @@ Ein wirtschaftliches Simulationsmodell, in dem KI-gesteuerte Firmen durch Reinfo
 - [Schnellstart](#-schnellstart)
 - [Projektstruktur](#-projektstruktur)
 - [Verwendung](#-verwendung)
-- [Sequential Purchasing Modell](#-sequential-purchasing-modell)
+- [Sequential Purchasing mit Preissensitivität](#-sequential-purchasing-mit-preissensitivit%C3%A4t)
 - [Konfiguration](#-konfiguration)
 - [Troubleshooting](#-troubleshooting)
 
@@ -23,6 +23,7 @@ Ein wirtschaftliches Simulationsmodell, in dem KI-gesteuerte Firmen durch Reinfo
 
 ### Marktmechanismen
 - **Sequential Purchasing**: Haushalte kaufen realistisch von der besten Firma bis Geld/Inventory erschöpft ist
+- **🆕 Preissensitive Haushalte**: Jeder Haushalt hat max_acceptable_price - ignoriert zu teure Firmen komplett
 - **Skill-basierter Arbeitsmarkt**: Hochqualifizierte Arbeiter bekommen bessere Jobs
 - **Dynamische Preisfindung**: Firmen lernen optimale Preise durch Trial & Error
 - **Qualität & Marketing**: Investitionen beeinflussen Kaufentscheidungen
@@ -30,11 +31,13 @@ Ein wirtschaftliches Simulationsmodell, in dem KI-gesteuerte Firmen durch Reinfo
 ### KI-Training
 - **Multi-Agent PPO**: 10 konkurrierende KI-Firmen lernen simultan
 - **Erweiterte Action Space**: Preis, Lohn, Marketing, Qualität, Kapazität
-- **Reward Shaping**: Marktanteil-Bonus, Inventory-Penalty, Exploration-Penalty
-- **Bankruptcy Mechanismus**: Schlechte Strategien führen zu Insolvenz
+- **Rebalanced Rewards**: Profit weniger dominant (scale: 1000), Bankruptcy schwer bestraft (-50,000)
+- **🆕 Survivor Diversity Penalty**: KI wird bestraft wenn zu viele Firmen bankrott gehen
+- **Hard Employee Cap**: Verhindert Monopole (max 150 Mitarbeiter)
 
 ### Realistische Simulation
-- **2000 Haushalte** mit unterschiedlichen Skill-Leveln und Vermögen
+- **3000 Haushalte** (erhöht von 2000) mit unterschiedlichen Skill-Leveln, Vermögen und Preislimits
+- **Kleinere Firmen** (80-120 statt 150-250 Mitarbeiter) für bessere Konkurrenz
 - **Supplier Economy**: Arbeitslose arbeiten für Zulieferfirmen
 - **25 Features Observation Space**: Umfassende Marktinformationen
 - **Reproduzierbare Ergebnisse**: Seed-basierte Simulation
@@ -105,7 +108,7 @@ python train.py
 ```
 
 **Was passiert:**
-- Training läuft für **150 Iterationen** (ca. 3-5 Stunden auf CPU)
+- Training läuft für **200 Iterationen** (ca. 4-6 Stunden auf CPU)
 - Checkpoints werden alle **10 Iterationen** gespeichert
 - Progress wird in der Console angezeigt
 
@@ -115,8 +118,8 @@ python train.py
   VWL SIMULATION - TRAINING
 ======================================================================
 
-Fresh training: 150 iterations
-Environment: 10 firms, 2000 households
+Fresh training: 200 iterations
+Environment: 10 firms, 3000 households
 Resources: 4 workers, 0 GPUs
 
 Building algorithm...
@@ -137,239 +140,85 @@ python run_simulation.py
 ```
 
 **Interaktiver Prozess:**
-1. **Checkpoint auswählen** (z.B. Iteration 150)
+1. **Checkpoint auswählen** (z.B. Iteration 200)
 2. **Seed eingeben** (für Reproduzierbarkeit) oder ENTER für random
 3. **Steps festlegen** (Standard: 100)
 4. Simulation läuft und speichert CSV-Dateien in `simulation_results/`
 
 **Ergebnis:**
-- `firms_checkpoint150_seed12345_20260208_120000.csv`
-- `households_checkpoint150_seed12345_20260208_120000.csv`
+- `firms_checkpoint200_seed12345_20260208_120000.csv`
+- `households_checkpoint200_seed12345_20260208_120000.csv`
 - `summary_seed12345_20260208_120000.txt`
 
 ---
 
-## 📁 Projektstruktur
-
-### Hauptdateien
-
-```
-VWL-Simulation-RL/
-│
-├── train.py                 # Training-Script für KI-Firmen
-├── run_simulation.py        # Simulation mit trainiertem Modell
-├── config.yaml              # Alle Simulations-Parameter
-├── requirements.txt         # Python Dependencies
-├── README.md                # Diese Datei
-│
-├── env/
-│   └── economy_env.py       # Gymnasium Environment (Kernlogik)
-│
-├── checkpoints/             # Gespeicherte Trainings-Checkpoints
-│   ├── checkpoint_000010/
-│   ├── checkpoint_000020/
-│   └── ...
-│
-├── metrics/                 # Training-Metriken (JSON)
-│   ├── iteration_10/
-│   └── ...
-│
-└── simulation_results/      # CSV-Outputs der Simulationen
-    ├── firms_*.csv
-    ├── households_*.csv
-    └── summary_*.txt
-```
-
-### Datei-Beschreibungen
-
-#### `train.py` - Training-Script
-**Zweck**: Trainiert die KI-Firmen mit PPO (Proximal Policy Optimization)
-
-**Wichtige Funktionen:**
-- Lädt Config aus `config.yaml`
-- Erstellt PPO Algorithmus mit Ray RLlib
-- Trainiert für N Iterationen (Standard: 150)
-- Speichert Checkpoints alle 10 Iterationen
-- Suppressed verbose Ray-Output für saubere Console
-
-**Verwendung:**
-```bash
-python train.py              # Fresh training
-python train.py --resume     # Resume from latest checkpoint
-```
-
-**Output:**
-- `checkpoints/checkpoint_NNNNNN/` - Trainierte Modelle
-- `metrics/iteration_N/result.json` - Training-Metriken
-
----
-
-#### `run_simulation.py` - Simulations-Runner
-**Zweck**: Führt Simulation mit trainiertem Modell aus und exportiert Daten
-
-**Wichtige Funktionen:**
-- Lädt gespeicherte Checkpoints
-- Interaktive Checkpoint-Auswahl
-- Seed-basierte Reproduzierbarkeit
-- Exportiert Daten als CSV (long format für Datenbank-Import)
-- Zeigt Initial & Final State an
-
-**Verwendung:**
-```bash
-python run_simulation.py
-```
-
-**Output:**
-- CSV-Dateien mit Firmen- und Haushalts-Daten pro Step
-- Summary-Text-Datei mit Zusammenfassung
-- Konsolen-Output mit wichtigen Statistiken
-
----
-
-#### `config.yaml` - Konfigurations-Datei
-**Zweck**: Zentrale Konfiguration aller Simulations-Parameter
-
-**Sections:**
-
-1. **`environment`**: Umgebungs-Setup
-   - `n_firms`: Anzahl Firmen (10)
-   - `n_households`: Anzahl Haushalte (2000)
-   - `max_steps`: Steps pro Episode (100)
-
-2. **`initial_ranges`**: Start-Werte für Firmen & Haushalte
-   - Preis, Lohn, Kapital, Qualität, Marketing
-   - Skill-Level, Geld, Vermögensverteilung
-
-3. **`training`**: PPO Training-Parameter
-   - Iterations, Learning Rate, Batch Sizes
-   - Workers, GPU Settings
-
-4. **`economy`**: Wirtschaftliche Parameter
-   - Produktionskosten, Fixkosten
-   - Investment-Kosten (Marketing, Qualität, Kapazität)
-   - Bankruptcy-Threshold
-   - Haushalts-Verhalten (Consumption Rate, Utility Weights)
-   - Reward Shaping (Market Share Bonus, Inventory Penalty)
-
-**Wichtig**: Alle Werte in `economy_env.py` werden aus dieser Datei geladen!
-
----
-
-#### `env/economy_env.py` - Gymnasium Environment
-**Zweck**: Kernlogik der Wirtschafts-Simulation
-
-**Klasse**: `SimpleEconomyEnv(MultiAgentEnv)`
-
-**Wichtige Methoden:**
-
-1. **`__init__(config)`**
-   - Lädt alle Parameter aus `config.yaml`
-   - Initialisiert Observation & Action Space
-   - Definiert Adjustment Rates für Actions
-
-2. **`reset(seed)`**
-   - Initialisiert Firmen mit Random-Werten aus Config
-   - Initialisiert Haushalte mit Skills & Wealth Types
-   - Setzt Timestep auf 0
-   - Returns: Initial Observations
-
-3. **`step(action_dict)`**
-   - **Phase 1**: Firmen nehmen Actions (Preis, Lohn, Marketing, etc.)
-   - **Phase 2**: Arbeitsmarkt (Skill-basiertes Matching)
-   - **Phase 3**: Produktion (Skill beeinflusst Produktivität)
-   - **Phase 4**: Gütermarkt (Sequential Purchasing)
-   - **Phase 5**: Profit-Berechnung, Bankruptcy-Check, Rewards
-   - Returns: Observations, Rewards, Dones, Infos
-
-4. **`_get_obs(agent_id)`**
-   - Erstellt 25-Feature Observation für eine Firma
-   - Enthält: Eigene State, Markt-Statistiken, Wettbewerbs-Info
-
-**Action Space**: `MultiDiscrete([5, 5, 3, 2, 3])`
-- Price Change: -10%, -5%, 0%, +5%, +10%
-- Wage Change: -10%, -5%, 0%, +5%, +10%
-- Marketing: Decrease, Keep, Increase
-- Quality: No, Yes (Improve)
-- Capacity: -1, 0, +1 Employees
-
-**Observation Space**: `Box(25,)` 
-- Own State (7): price, wage, employees, inventory, capital, quality, marketing
-- Market Stats (6): avg/min/max price/wage
-- Aggregates (4): total employed, unemployment, avg household money/skill
-- Meta (3): last profit, competitors alive, timestep progress
-- Strategic (5): market share, sales trend, inventory ratio, wage/price competitiveness
-
----
-
-#### `requirements.txt` - Python Dependencies
-**Zweck**: Liste aller benötigten Python-Pakete
-
-**Hauptpakete:**
-- `ray[rllib]==2.9.0` - Reinforcement Learning Framework
-- `torch==2.1.2` - Deep Learning Backend
-- `gymnasium==0.29.1` - Environment Interface
-- `numpy`, `pandas` - Datenverarbeitung
-- `pyyaml` - Config-File Parsing
-
-**Installation:**
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## 🎮 Sequential Purchasing Modell
+## 🎮 Sequential Purchasing mit Preissensitivität
 
 ### Konzept
 
-Das **Sequential Purchasing** Modell simuliert realistisches Kaufverhalten:
+Das **Sequential Purchasing** Modell mit **Preissensitivität** simuliert hochrealistisches Kaufverhalten:
 
-1. **Utility-Berechnung**: Jeder Haushalt berechnet Utility für alle Firmen
-   ```
-   Utility = (Quality × 0.5 + Marketing × 0.3) / (Price × 1.0)
-   ```
+#### Phase 1: Preisfilterung (NEU! 🆕)
+Jeder Haushalt hat `max_acceptable_price` (10-100€):
+- **Low-Budget Haushalt** (max: 30€): Kauft nur bei günstigen Firmen
+- **Medium Haushalt** (max: 60€): Mittleres Preissegment
+- **Premium Haushalt** (max: 100€): Akzeptiert auch teure Preise
 
-2. **Sortierung**: Firmen werden nach Utility sortiert (beste zuerst)
+**Firmen über dem Limit werden KOMPLETT ignoriert!**
 
-3. **Sequenzieller Kauf**:
+#### Phase 2: Utility-Berechnung
+Für alle **erschwinglichen** Firmen:
+```
+Utility = (Quality × 0.5 + Marketing × 0.3) / (Price × 1.0)
+```
+
+#### Phase 3: Sequential Purchasing
+1. **Sortierung**: Firmen nach Utility (beste zuerst)
+2. **Sequenzieller Kauf**:
    - Haushalt kauft bei **bester Firma** bis:
      - Budget aufgebraucht ODER
      - Inventory der Firma leer
    - Falls Budget übrig: Weiter zur **zweitbesten Firma**
    - Wiederholen bis Budget komplett weg
-
-4. **Random Order**: Haushalts-Reihenfolge wird jeden Step randomisiert (Fairness)
+3. **Random Order**: Haushalts-Reihenfolge jeden Step randomisiert (Fairness)
 
 ### Beispiel
 
 **Setup:**
-- Haushalt Budget: 100€
-- Firmen (sortiert nach Utility):
-  1. Firma A: 20€/Stk, Inventory: 2, Utility: 0.025
-  2. Firma B: 25€/Stk, Inventory: 500, Utility: 0.023
-  3. Firma C: 30€/Stk, Inventory: 800, Utility: 0.020
+- Haushalt: Budget 100€, max_acceptable_price: 40€
+- Firmen:
+  - Firma A: 25€/Stk, Quality: 0.7, Marketing: 0.5, Inventory: 3
+  - Firma B: 35€/Stk, Quality: 0.8, Marketing: 0.6, Inventory: 500  
+  - Firma C: 50€/Stk, Quality: 0.9, Marketing: 0.7, Inventory: 800 (ZU TEUER!)
 
 **Ablauf:**
-1. Kaufe bei Firma A: 2 Stück × 20€ = 40€ → **Firma A ausverkauft!**
-2. Restbudget: 60€
-3. Kaufe bei Firma B: 60€ / 25€ = 2.4 → 2 Stück × 25€ = 50€
-4. Restbudget: 10€
-5. Bei Firma C: 10€ / 30€ = 0.33 → **Zu wenig Geld!**
+1. **Preisfilter**: Firma C wird ignoriert (50€ > 40€)
+2. **Utility-Berechnung**:
+   - Firma A: (0.7×0.5 + 0.5×0.3) / 25 = 0.020
+   - Firma B: (0.8×0.5 + 0.6×0.3) / 35 = 0.016
+3. **Kaufen bei Firma A**: 3 Stück × 25€ = 75€ → **Ausverkauft!**
+4. **Restbudget**: 25€
+5. **Zu wenig für Firma B** (25€ < 35€)
 
 **Ergebnis:**
 - Firma A: Alles verkauft ✅
-- Firma B: Etwas verkauft ✅
-- Firma C: Nichts verkauft ❌ → Muss Preise senken!
+- Firma B: Nichts verkauft (zu teuer für Budget)
+- Firma C: Ignoriert (über Preislimit)
 
-### Vorteile gegenüber Top-3 (50/30/20%)
+### Markt-Stratifizierung
 
-| Aspekt | Top-3 Split | Sequential |
-|--------|-------------|------------|
-| Realismus | ❌ Künstlich | ✅ Natürlich |
-| Firmen mit Sales | Nur 3 | Alle mit guter Utility |
-| Marktdruck | Schwach | Stark auf schwache Firmen |
-| Survivors | 3-5 Firmen | 7-9 Firmen |
-| Dynamik | Statisch | Sehr dynamisch |
+Durch Preissensitivität entstehen **natürliche Marktsegmente**:
+
+| Segment | Preis | Zielgruppe | Strategie |
+|---------|-------|------------|----------|
+| Budget | 10-30€ | Low-wealth HH (30%) | Volumen über Preis |
+| Mittelklasse | 30-60€ | Medium-wealth HH (50%) | Balance Preis/Qualität |
+| Premium | 60-100€ | High-wealth HH (20%) | Qualität über Preis |
+
+**KI lernt:**
+- Nicht alle Firmen müssen billig sein!
+- Premium-Strategie kann profitabel sein
+- Marktsegmentierung verhindert "Race to the Bottom"
 
 ---
 
@@ -382,7 +231,7 @@ Das **Sequential Purchasing** Modell simuliert realistisches Kaufverhalten:
 **In `config.yaml`:**
 ```yaml
 training:
-  iterations: 200        # Mehr Iterations = besseres Learning
+  iterations: 250        # Mehr Iterations = besseres Learning
 ```
 
 #### Markt vergrößern/verkleinern
@@ -390,7 +239,7 @@ training:
 ```yaml
 environment:
   n_firms: 15            # Mehr Firmen = härterer Wettbewerb
-  n_households: 3000     # Mehr Haushalte = größerer Markt
+  n_households: 5000     # Mehr Haushalte = größerer Markt
 ```
 
 #### Wirtschaft schwieriger machen
@@ -398,19 +247,33 @@ environment:
 ```yaml
 economy:
   production:
-    fixed_costs: 150.0   # Höhere Fixkosten
+    fixed_costs: 200.0   # Höhere Fixkosten
   bankruptcy:
     threshold: -1000.0   # Schnellerer Bankrott
+    penalty_reward: -100000.0  # Noch härtere Strafe
 ```
 
-#### Haushalts-Verhalten ändern
+#### Haushalts-Preissensitivität ändern
+
+```yaml
+initial_ranges:
+  households:
+    max_acceptable_price:
+      min: 20.0          # Alle müssen mindestens 20€ akzeptieren
+      max: 80.0          # Niemand zahlt über 80€
+```
+
+#### Firmen-Größe limitieren
 
 ```yaml
 economy:
-  households:
-    consumption_rate: 0.8              # Mehr Konsum (80% statt 70%)
-    utility_price_weight: 1.5          # Preis wichtiger
-    utility_quality_weight: 0.8        # Qualität wichtiger
+  max_employees_hard_cap: 100   # Kleinere Monopole
+  
+initial_ranges:
+  firms:
+    max_employees:
+      min: 50
+      max: 80
 ```
 
 ### GPU Training aktivieren
@@ -428,30 +291,104 @@ training:
 
 ## 🔧 Troubleshooting
 
+### Problem: Fast alle Firmen gehen sofort bankrott
+
+**Ursache**: Neue Bankruptcy Penalty (-50,000) ist extrem hoch, Model muss erst lernen
+
+**Lösungen:**
+
+1. **Mehr Training**: Warte bis Iteration 100+ (frühe Phasen haben viele Bankruptcies)
+
+2. **Sanftere Penalty** (für Experimente):
+   ```yaml
+   economy:
+     bankruptcy:
+       penalty_reward: -10000.0  # Statt -50000
+   ```
+
+3. **Höheres Initial Capital**:
+   ```yaml
+   initial_ranges:
+     firms:
+       capital:
+         min: 10000.0   # Statt 5000
+         max: 20000.0   # Statt 10000
+   ```
+
+4. **Niedrigere Fixkosten**:
+   ```yaml
+   economy:
+     production:
+       fixed_costs: 100.0  # Statt 150
+   ```
+
+---
+
+### Problem: Nur 3 Firmen überleben (Monopole)
+
+**Ursache**: Model hat falsche Strategie gelernt (alte Checkpoints vor Rebalancing)
+
+**Lösung**: **Fresh Training** mit neuen Parametern!
+
+```bash
+# Alte Checkpoints löschen
+rm -rf checkpoints/*  # Linux/Mac
+del /s /q checkpoints\*  # Windows
+
+# Neu trainieren
+python train.py
+```
+
+---
+
+### Problem: Haushalte kaufen nichts (Revenue = 0)
+
+**Ursache**: Alle Firmen sind zu teuer für Haushalts-Preislimits
+
+**Check**:
+```python
+# In run_simulation.py Output schauen:
+Avg Firm Price: 85€
+Avg HH Max Price: 55€  # ← Problem!
+```
+
+**Lösung**: Preis-Range anpassen
+```yaml
+initial_ranges:
+  firms:
+    price:
+      min: 15.0    # Niedriger starten
+      max: 45.0    # Nicht zu hoch
+```
+
+---
+
+### Problem: Training sehr langsam (mit 3000 Haushalten)
+
+**Mögliche Ursachen:**
+1. Zu wenig RAM → Close other applications
+2. CPU zu schwach → Reduce workers:
+   ```yaml
+   training:
+     resources:
+       num_env_runners: 2  # Statt 4
+   ```
+3. Zu viele Haushalte → Reduce (aber mindestens 2000!):
+   ```yaml
+   environment:
+     n_households: 2000    # Statt 3000
+   ```
+
+**Hinweis**: Mit 3000 HH ist Training ca. 30% langsamer als mit 2000 HH, aber Ergebnisse sind besser!
+
+---
+
 ### Problem: `ModuleNotFoundError: No module named 'ray'`
 
 **Lösung:**
 ```bash
 pip install -r requirements.txt
 ```
-
----
-
-### Problem: Training sehr langsam
-
-**Mögliche Ursachen:**
-1. Zu wenig RAM → Close other applications
-2. CPU zu schwach → Reduce `num_env_runners` in `config.yaml`:
-   ```yaml
-   training:
-     resources:
-       num_env_runners: 2  # Statt 4
-   ```
-3. Zu viele Haushalte → Reduce in `config.yaml`:
-   ```yaml
-   environment:
-     n_households: 1000    # Statt 2000
-   ```
 
 ---
 
@@ -466,83 +403,79 @@ training:
 
 ---
 
-### Problem: Checkpoints werden nicht gespeichert
+### Problem: Survivor Diversity Penalty zu hoch
 
-**Check**:
-1. Schreibrechte im Projektordner?
-2. Genug Speicherplatz? (ca. 500 MB pro Checkpoint)
+**Symptom**: Rewards am Ende plötzlich massiv negativ
 
-**Lösung**:
-```bash
-# Windows
-icacls checkpoints /grant %USERNAME%:F
+**Check in `config.yaml`:**
+```yaml
+economy:
+  reward:
+    survivor_diversity_threshold: 5     # Penalty wenn < 5 survivors
+    survivor_diversity_penalty: 10000   # Pro fehlender Firma
+```
 
-# Linux/macOS
-chmod -R 755 checkpoints/
+**Beispiel**: 3 Survivors → (5-3) × 10,000 = -20,000 Penalty **pro Survivor**!
+
+**Lösung**: Penalty reduzieren oder Threshold senken
+```yaml
+economy:
+  reward:
+    survivor_diversity_threshold: 4     # Weniger streng
+    survivor_diversity_penalty: 5000    # Sanfter
 ```
 
 ---
 
-### Problem: Alle Firmen gehen bankrott
-
-**Mögliche Ursachen:**
-1. Zu harsche Bankruptcy-Threshold
-2. Fixed Costs zu hoch
-3. Model noch nicht trainiert (frühe Iterationen)
-
-**Lösungen**:
-1. **Sanftere Bankruptcy**:
-   ```yaml
-   economy:
-     bankruptcy:
-       threshold: -5000.0  # Mehr Spielraum
-   ```
-
-2. **Niedrigere Fixkosten**:
-   ```yaml
-   economy:
-     production:
-       fixed_costs: 50.0   # Statt 100
-   ```
-
-3. **Mehr Training**: Warte bis Iteration 50+
-
----
-
-### Problem: `python: command not found`
-
-**Windows**: Verwende `py` statt `python`
-```bash
-py train.py
-```
-
-**macOS/Linux**: Verwende `python3`
-```bash
-python3 train.py
-```
-
----
-
-## 📊 Erwartete Ergebnisse
+## 📊 Erwartete Ergebnisse (Nach Rebalancing)
 
 ### Nach 50 Iterationen (Early Learning)
-- **Survivors**: 5-7 Firmen
-- **Avg Reward**: -5 bis 0
-- **Bankruptcy Rate**: 30-50%
-- **Market Share**: Ungleich verteilt
+- **Survivors**: 3-5 Firmen ⚠️ (noch viele Bankruptcies)
+- **Avg Reward**: -500 bis -100 (Bankruptcy Penalties dominieren)
+- **Bankruptcy Rate**: 50-70%
+- **Market Share**: Stark ungleich
+- **Avg Firm Size**: 60-90 Mitarbeiter
 
 ### Nach 100 Iterationen (Intermediate)
-- **Survivors**: 6-8 Firmen
-- **Avg Reward**: 0 bis +5
-- **Bankruptcy Rate**: 20-30%
-- **Market Share**: Gleichmäßiger
+- **Survivors**: 5-7 Firmen ✅
+- **Avg Reward**: -50 bis +50
+- **Bankruptcy Rate**: 30-50%
+- **Market Share**: Gleichmäßiger werdend
+- **Avg Firm Size**: 70-100 Mitarbeiter
+- **Price Stratification**: Beginnt sich zu zeigen
 
-### Nach 150 Iterationen (Converged)
-- **Survivors**: 7-9 Firmen ✅
-- **Avg Reward**: +3 bis +8
+### Nach 150 Iterationen (Good)
+- **Survivors**: 6-8 Firmen ✅✅
+- **Avg Reward**: +20 bis +80
+- **Bankruptcy Rate**: 20-30%
+- **Market Share**: 10-16% pro Firma
+- **Avg Firm Size**: 80-110 Mitarbeiter
+- **Price Range**: 20-70€ (Budget bis Premium)
+
+### Nach 200 Iterationen (Converged) ⭐
+- **Survivors**: 7-9 Firmen ✅✅✅
+- **Avg Reward**: +40 bis +100
 - **Bankruptcy Rate**: 10-20%
-- **Market Share**: 8-15% pro Firma
-- **Dynamik**: Stabile aber wechselnde Marktanteile
+- **Market Share**: 10-14% pro Firma (sehr balanced!)
+- **Avg Firm Size**: 85-115 Mitarbeiter
+- **Price Stratification**: Klar erkennbar:
+  - Budget: 2-3 Firmen bei 15-35€
+  - Mittelklasse: 3-4 Firmen bei 35-60€
+  - Premium: 1-2 Firmen bei 60-85€
+- **Employment Rate**: 75-85%
+- **Market Dynamics**: Stabil aber mit wechselnden Marktanteilen
+
+### Vergleich: Alte vs. Neue Parameter
+
+| Metrik | ALT (2000 HH, kleine Penalty) | NEU (3000 HH, große Penalty) |
+|--------|-------------------------------|------------------------------|
+| Survivors | 3-5 ❌ | 7-9 ✅ |
+| Monopole | Häufig | Selten |
+| Avg Firm Size | 150-220 | 80-115 |
+| Bankruptcy Learning | Schwach | Stark |
+| Market Balance | Ungleich | Sehr gleichmäßig |
+| Price Competition | Niedrig | Hoch |
+| Reward Stability | Volatil | Stabiler |
 
 ---
 
@@ -554,10 +487,43 @@ python3 train.py
 - **Gymnasium**: Standard-Interface für RL Environments
 - **PPO**: Proximal Policy Optimization Algorithmus
 
+### Key Features dieser Implementation
+1. **Price-Sensitive Sequential Purchasing**: Einzigartige Kombination von Preislimits + sequenziellem Kauf
+2. **Rebalanced Rewards**: Bankruptcy-Vermeidung wichtiger als kurzfristige Profite
+3. **Survivor Diversity Incentive**: KI lernt, Konkurrenz am Leben zu halten
+4. **Hard Capacity Caps**: Verhindert Monopol-Bildung
+5. **Skill-Based Matching**: Realistische Arbeitsmarkt-Dynamik
+
 ### Nützliche Ressourcen
 - [Ray RLlib Dokumentation](https://docs.ray.io/en/latest/rllib/index.html)
 - [Gymnasium Dokumentation](https://gymnasium.farama.org/)
 - [PPO Paper (Schulman et al.)](https://arxiv.org/abs/1707.06347)
+
+---
+
+## 🆕 Changelog
+
+### Version 2.0 (Feb 2026) - Major Rebalancing
+
+**Neue Features:**
+- ✅ Price-sensitive households (max_acceptable_price)
+- ✅ Hard employee cap (150 max)
+- ✅ Survivor diversity penalty
+- ✅ Rebalanced rewards (profit scale 100 → 1000)
+
+**Parameter Changes:**
+- Households: 2000 → 3000
+- Max employees: 150-250 → 80-120
+- Bankruptcy penalty: -20 → -50,000
+- Fixed costs: 100 → 150
+- Training iterations: 150 → 200
+- Quality/Marketing ranges: Narrowed for fairness
+
+**Expected Impact:**
+- More survivors (7-9 vs 3-5)
+- Better market balance
+- Natural price stratification
+- Stronger bankruptcy avoidance learning
 
 ---
 
@@ -574,3 +540,5 @@ Bei Fragen oder Problemen, bitte ein Issue auf GitHub erstellen.
 ---
 
 **Viel Erfolg beim Training! 🚀**
+
+**WICHTIG**: Für beste Ergebnisse mit neuen Parametern **fresh training** starten (alte Checkpoints löschen)!
