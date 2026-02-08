@@ -2,7 +2,7 @@
 
 **Multi-Agent Reinforcement Learning Simulation for Economics**
 
-Ein wirtschaftliches Simulationsmodell, in dem KI-gesteuerte Firmen durch Reinforcement Learning lernen, in einem kompetitiven Markt zu agieren. Haushalte kaufen Güter basierend auf Preis, Qualität und Marketing, während Firmen ihre Strategien optimieren müssen, um zu überleben.
+Ein wirtschaftliches Simulationsmodell, in dem KI-gesteuerte Firmen durch Reinforcement Learning lernen, in einem kompetitiven Markt zu agieren. Haushalte kaufen Güter basierend auf **Preis, Qualität, Marketing UND ihrem Einkommen**, während Firmen ihre Strategien optimieren müssen, um zu überleben.
 
 ---
 
@@ -13,7 +13,7 @@ Ein wirtschaftliches Simulationsmodell, in dem KI-gesteuerte Firmen durch Reinfo
 - [Schnellstart](#-schnellstart)
 - [Projektstruktur](#-projektstruktur)
 - [Verwendung](#-verwendung)
-- [Sequential Purchasing mit Preissensitivität](#-sequential-purchasing-mit-preissensitivit%C3%A4t)
+- [Einkommensbasiertes Kaufverhalten](#-einkommensbasiertes-kaufverhalten)
 - [Konfiguration](#-konfiguration)
 - [Troubleshooting](#-troubleshooting)
 
@@ -22,21 +22,26 @@ Ein wirtschaftliches Simulationsmodell, in dem KI-gesteuerte Firmen durch Reinfo
 ## 🎯 Features
 
 ### Marktmechanismen
+- **🆕 Einkommensbasierte Präferenzen**: Reiche kaufen Qualität, Arme kaufen billig - verhindert "Race to the Bottom"!
 - **Sequential Purchasing**: Haushalte kaufen realistisch von der besten Firma bis Geld/Inventory erschöpft ist
-- **🆕 Preissensitive Haushalte**: Jeder Haushalt hat max_acceptable_price - ignoriert zu teure Firmen komplett
+- **Preissensitive Haushalte**: Jeder Haushalt hat max_acceptable_price - ignoriert zu teure Firmen komplett
+- **Unbegrenzte Qualität**: Firmen können Quality & Marketing bis 2.0 steigern (statt 1.0 Cap)
 - **Skill-basierter Arbeitsmarkt**: Hochqualifizierte Arbeiter bekommen bessere Jobs
 - **Dynamische Preisfindung**: Firmen lernen optimale Preise durch Trial & Error
-- **Qualität & Marketing**: Investitionen beeinflussen Kaufentscheidungen
 
 ### KI-Training
 - **Multi-Agent PPO**: 10 konkurrierende KI-Firmen lernen simultan
 - **Erweiterte Action Space**: Preis, Lohn, Marketing, Qualität, Kapazität
 - **Rebalanced Rewards**: Profit weniger dominant (scale: 1000), Bankruptcy schwer bestraft (-50,000)
-- **🆕 Survivor Diversity Penalty**: KI wird bestraft wenn zu viele Firmen bankrott gehen
+- **Survivor Diversity Penalty**: KI wird bestraft wenn zu viele Firmen bankrott gehen
 - **Hard Employee Cap**: Verhindert Monopole (max 150 Mitarbeiter)
 
 ### Realistische Simulation
-- **3000 Haushalte** (erhöht von 2000) mit unterschiedlichen Skill-Leveln, Vermögen und Preislimits
+- **3000 Haushalte** mit unterschiedlichen:
+  - Skill-Leveln (0.3-1.0)
+  - Vermögen (100-200€ Start)
+  - Preislimits (10-100€)
+  - **Einkommensklassen** (30% arm, 50% mittel, 20% reich)
 - **Kleinere Firmen** (80-120 statt 150-250 Mitarbeiter) für bessere Konkurrenz
 - **Supplier Economy**: Arbeitslose arbeiten für Zulieferfirmen
 - **25 Features Observation Space**: Umfassende Marktinformationen
@@ -152,89 +157,218 @@ python run_simulation.py
 
 ---
 
-## 🎮 Sequential Purchasing mit Preissensitivität
+## 💵 Einkommensbasiertes Kaufverhalten
 
-### Konzept
+### Das Problem: "Race to the Bottom"
 
-Das **Sequential Purchasing** Modell mit **Preissensitivität** simuliert hochrealistisches Kaufverhalten:
-
-#### Phase 1: Preisfilterung (NEU! 🆕)
-Jeder Haushalt hat `max_acceptable_price` (10-100€):
-- **Low-Budget Haushalt** (max: 30€): Kauft nur bei günstigen Firmen
-- **Medium Haushalt** (max: 60€): Mittleres Preissegment
-- **Premium Haushalt** (max: 100€): Akzeptiert auch teure Preise
-
-**Firmen über dem Limit werden KOMPLETT ignoriert!**
-
-#### Phase 2: Utility-Berechnung
-Für alle **erschwinglichen** Firmen:
+**VORHER** (nur Preis zählt):
 ```
+Utility = (Quality × 0.5 + Marketing × 0.3) / Price
+
+Billigste Firma IMMER besser:
+  Firma A: 10€, Quality 0.7  → Utility = 0.085  ← GEWINNT IMMER
+  Firma B: 50€, Quality 1.5  → Utility = 0.039  ← Verliert
+
+Ergebnis: Alle Firmen bei 10€ Minimum-Preis! ❌
+```
+
+### Die Lösung: Einkommensbasierte Präferenzen 🆕
+
+**JETZT** (Einkommen bestimmt Präferenzen):
+
+Jeder Haushalt hat einen **Wealth Type** (arm/mittel/reich) mit unterschiedlichen **Utility Weights**:
+
+#### **Arme Haushalte** (30% der Bevölkerung)
+```python
+Utility = (Quality × 0.3 + Marketing × 0.21) / (Price × 1.5)
+                ↑ wenig wichtig               ↑ SEHR wichtig!
+
+Beispiel:
+  Budget-Firma:  10€, Quality 0.7  → Utility = 0.0315  ← BEST!
+  Premium-Firma: 70€, Quality 1.8  → Utility = 0.0081  ← Zu teuer
+
+Verhalten: Kaufen NUR billige Produkte!
+```
+
+#### **Mittelschicht** (50% der Bevölkerung)
+```python
 Utility = (Quality × 0.5 + Marketing × 0.3) / (Price × 1.0)
+                ↑ wichtig                ↑ normal
+
+Beispiel:
+  Budget-Firma:  10€, Quality 0.7  → Utility = 0.065
+  Mittel-Firma:  40€, Quality 1.2  → Utility = 0.0225  ← Gutes Verhältnis
+  Premium-Firma: 70€, Quality 1.8  → Utility = 0.0194
+
+Verhalten: Balance zwischen Preis und Qualität!
 ```
 
-#### Phase 3: Sequential Purchasing
-1. **Sortierung**: Firmen nach Utility (beste zuerst)
-2. **Sequenzieller Kauf**:
-   - Haushalt kauft bei **bester Firma** bis:
-     - Budget aufgebraucht ODER
-     - Inventory der Firma leer
-   - Falls Budget übrig: Weiter zur **zweitbesten Firma**
-   - Wiederholen bis Budget komplett weg
-3. **Random Order**: Haushalts-Reihenfolge jeden Step randomisiert (Fairness)
+#### **Reiche Haushalte** (20% der Bevölkerung)
+```python
+Utility = (Quality × 0.9 + Marketing × 0.45) / (Price × 0.5)
+                ↑ SEHR wichtig!            ↑ weniger wichtig
 
-### Beispiel
+Beispiel:
+  Budget-Firma:  10€, Quality 0.7  → Utility = 0.171
+  Premium-Firma: 70€, Quality 1.8  → Utility = 0.0656  ← Qualität lohnt sich!
 
-**Setup:**
-- Haushalt: Budget 100€, max_acceptable_price: 40€
-- Firmen:
-  - Firma A: 25€/Stk, Quality: 0.7, Marketing: 0.5, Inventory: 3
-  - Firma B: 35€/Stk, Quality: 0.8, Marketing: 0.6, Inventory: 500  
-  - Firma C: 50€/Stk, Quality: 0.9, Marketing: 0.7, Inventory: 800 (ZU TEUER!)
+Verhalten: Zahlen GERNE mehr für hohe Qualität!
+```
 
-**Ablauf:**
-1. **Preisfilter**: Firma C wird ignoriert (50€ > 40€)
-2. **Utility-Berechnung**:
-   - Firma A: (0.7×0.5 + 0.5×0.3) / 25 = 0.020
-   - Firma B: (0.8×0.5 + 0.6×0.3) / 35 = 0.016
-3. **Kaufen bei Firma A**: 3 Stück × 25€ = 75€ → **Ausverkauft!**
-4. **Restbudget**: 25€
-5. **Zu wenig für Firma B** (25€ < 35€)
+---
 
-**Ergebnis:**
-- Firma A: Alles verkauft ✅
-- Firma B: Nichts verkauft (zu teuer für Budget)
-- Firma C: Ignoriert (über Preislimit)
+### Natürliche Marktsegmentierung
 
-### Markt-Stratifizierung
+Durch einkommensbasierte Präferenzen entstehen **drei profitable Segmente**:
 
-Durch Preissensitivität entstehen **natürliche Marktsegmente**:
+| Segment | Preis | Quality | Zielgruppe | Strategie |
+|---------|-------|---------|------------|----------|
+| **Budget** | 15-35€ | 0.7-1.0 | Arme (30%) + Mittel (50%) | Volumen durch niedrigen Preis |
+| **Mainstream** | 35-60€ | 1.0-1.5 | Mittel (50%) + Reiche (20%) | Balance Preis/Qualität |
+| **Premium** | 60-100€ | 1.5-2.0 | Reiche (20%) | Hohe Marge durch Qualität |
 
-| Segment | Preis | Zielgruppe | Strategie |
-|---------|-------|------------|----------|
-| Budget | 10-30€ | Low-wealth HH (30%) | Volumen über Preis |
-| Mittelklasse | 30-60€ | Medium-wealth HH (50%) | Balance Preis/Qualität |
-| Premium | 60-100€ | High-wealth HH (20%) | Qualität über Preis |
+**Erwartete Firma-Verteilung nach Training:**
+- 3-4 Budget-Firmen (billiger Preis, okay Quality)
+- 3-4 Mainstream-Firmen (mittlerer Preis, gute Quality)
+- 2-3 Premium-Firmen (hoher Preis, exzellente Quality)
 
-**KI lernt:**
-- Nicht alle Firmen müssen billig sein!
-- Premium-Strategie kann profitabel sein
-- Marktsegmentierung verhindert "Race to the Bottom"
+**ALLE können profitabel sein!** ✅
+
+---
+
+### Beispiel: Zwei profitable Strategien
+
+#### **Budget-Firma** (Firma A)
+```
+Preis: 20€
+Quality: 0.8
+Marketing: 0.5
+Employees: 120
+
+Kunden:
+  - Arme HH (900): Utility = 0.031  ← SEHR GUT für diese Gruppe
+  - Mittel HH (1500): Utility = 0.055  ← Okay
+  - Reiche HH (600): Utility = 0.110  ← Auch für Reiche akzeptabel!
+  
+Total: ~2400 potenzielle Kunden (80%!)
+Umsatz: 2400 × 20€ = 48,000€ per Step
+Profit: ~25,000€ per Step  ✅
+```
+
+#### **Premium-Firma** (Firma B)
+```
+Preis: 75€
+Quality: 1.8
+Marketing: 1.5
+Employees: 90
+
+Kunden:
+  - Arme HH (900): Utility = 0.0081  ← ZU TEUER, kaufen nicht
+  - Mittel HH (1500): Utility = 0.030  ← Nur top earners kaufen
+  - Reiche HH (600): Utility = 0.066  ← PERFEKT für diese Gruppe!
+  
+Total: ~800 potenzielle Kunden (27%)
+Umsatz: 800 × 75€ = 60,000€ per Step  ← MEHR als Budget!
+Profit: ~30,000€ per Step  ✅✅
+
+Warum profitabler?
+  - Höhere Marge (75€ vs 20€)
+  - Weniger Competition um reiche Kunden
+  - Kleinere Firma = niedrigere Lohnkosten
+```
+
+**Beide Strategien funktionieren!** Kein "Race to the Bottom" mehr! 🎉
+
+---
+
+## 💪 Unbegrenzte Qualität & Marketing
+
+### Vorher: Artificial Cap bei 1.0
+```yaml
+OLD:
+  Quality: max 1.0  ❌
+  Marketing: max 1.0  ❌
+  
+Problem: Premium-Firmen können sich nicht differenzieren!
+```
+
+### Jetzt: Cap bei 2.0
+```yaml
+NEW:
+  Quality: max 2.0  ✅ (kann unbegrenzt investieren!)
+  Marketing: max 2.0  ✅ (Premium-Branding möglich!)
+  
+Kosten:
+  Quality +0.05: 50€ (erhöht von 30€)
+  Marketing +0.1: 20€
+  
+Beispiel Premium-Entwicklung:
+  Start: Quality 0.7, Marketing 0.5
+  Step 20: Quality 1.2, Marketing 1.0  (investiert 10,000€)
+  Step 50: Quality 1.8, Marketing 1.5  (investiert weitere 15,000€)
+  
+Ergebnis: Echte Premium-Marke mit Alleinstellungsmerkmal!
+```
+
+**Premium-Firmen können jetzt richtig in Qualität investieren!** 🚀
 
 ---
 
 ## ⚙️ Konfiguration
 
-### Wichtige Parameter anpassen
-
-#### Training verlängern/verkürzen
+### Einkommens-Präferenzen anpassen
 
 **In `config.yaml`:**
 ```yaml
-training:
-  iterations: 250        # Mehr Iterations = besseres Learning
+economy:
+  households:
+    # Wie stark beeinflussen Preis/Qualität/Marketing die Kaufentscheidung?
+    wealth_utility_modifiers:
+      low:                          # Arme Haushalte
+        price_weight: 1.5           # SEHR preis-sensitiv
+        quality_weight: 0.6         # Quality weniger wichtig
+        marketing_weight: 0.7       # Ads weniger wirksam
+      
+      medium:                       # Mittelschicht
+        price_weight: 1.0           # Normal
+        quality_weight: 1.0         # Normal
+        marketing_weight: 1.0       # Normal
+      
+      high:                         # Reiche
+        price_weight: 0.5           # Preis weniger wichtig!
+        quality_weight: 1.8         # Quality SEHR wichtig!
+        marketing_weight: 1.5       # Branding wirkt stark
 ```
 
-#### Markt vergrößern/verkleinern
+**Beispiel: Noch extremere Segmentierung**
+```yaml
+low:
+  price_weight: 2.0      # Arme kaufen NUR billig
+  quality_weight: 0.3    # Quality fast egal
+  
+high:
+  price_weight: 0.3      # Reiche ignorieren Preis
+  quality_weight: 2.5    # Nur beste Quality zählt
+```
+
+### Quality/Marketing Caps anpassen
+
+```yaml
+economy:
+  quality_bounds:
+    min: 0.1
+    max: 3.0              # Noch höhere Qualität möglich!
+  
+  marketing_bounds:
+    min: 0.1
+    max: 3.0              # Luxury-Branding!
+  
+  investment_costs:
+    quality_improvement: 100.0   # Teurer machen (war 50)
+    marketing_per_level: 50.0    # Teurer machen (war 20)
+```
+
+### Markt vergrößern/verkleinern
 
 ```yaml
 environment:
@@ -242,240 +376,109 @@ environment:
   n_households: 5000     # Mehr Haushalte = größerer Markt
 ```
 
-#### Wirtschaft schwieriger machen
-
-```yaml
-economy:
-  production:
-    fixed_costs: 200.0   # Höhere Fixkosten
-  bankruptcy:
-    threshold: -1000.0   # Schnellerer Bankrott
-    penalty_reward: -100000.0  # Noch härtere Strafe
-```
-
-#### Haushalts-Preissensitivität ändern
-
-```yaml
-initial_ranges:
-  households:
-    max_acceptable_price:
-      min: 20.0          # Alle müssen mindestens 20€ akzeptieren
-      max: 80.0          # Niemand zahlt über 80€
-```
-
-#### Firmen-Größe limitieren
-
-```yaml
-economy:
-  max_employees_hard_cap: 100   # Kleinere Monopole
-  
-initial_ranges:
-  firms:
-    max_employees:
-      min: 50
-      max: 80
-```
-
-### GPU Training aktivieren
-
-**In `config.yaml`:**
-```yaml
-training:
-  resources:
-    num_gpus: 1          # 1 GPU verwenden (falls vorhanden)
-```
-
-**Hinweis**: Erfordert CUDA-fähige GPU und `torch` mit CUDA-Support.
-
 ---
 
 ## 🔧 Troubleshooting
 
-### Problem: Fast alle Firmen gehen sofort bankrott
+### Problem: Immer noch alle Firmen bei 10€
 
-**Ursache**: Neue Bankruptcy Penalty (-50,000) ist extrem hoch, Model muss erst lernen
+**Ursache**: Training zu kurz oder alte Checkpoints
 
-**Lösungen:**
+**Lösung**:
+1. **Fresh Training** starten (alte Checkpoints löschen)
+2. Mindestens bis **Iteration 100** warten
+3. Check nach Iteration 100:
+   - Sollte 3-4 Firmen über 30€ geben
+   - Min 2 Firmen über 50€
 
-1. **Mehr Training**: Warte bis Iteration 100+ (frühe Phasen haben viele Bankruptcies)
-
-2. **Sanftere Penalty** (für Experimente):
-   ```yaml
-   economy:
-     bankruptcy:
-       penalty_reward: -10000.0  # Statt -50000
-   ```
-
-3. **Höheres Initial Capital**:
-   ```yaml
-   initial_ranges:
-     firms:
-       capital:
-         min: 10000.0   # Statt 5000
-         max: 20000.0   # Statt 10000
-   ```
-
-4. **Niedrigere Fixkosten**:
-   ```yaml
-   economy:
-     production:
-       fixed_costs: 100.0  # Statt 150
-   ```
-
----
-
-### Problem: Nur 3 Firmen überleben (Monopole)
-
-**Ursache**: Model hat falsche Strategie gelernt (alte Checkpoints vor Rebalancing)
-
-**Lösung**: **Fresh Training** mit neuen Parametern!
-
-```bash
-# Alte Checkpoints löschen
-rm -rf checkpoints/*  # Linux/Mac
-del /s /q checkpoints\*  # Windows
-
-# Neu trainieren
-python train.py
+**Falls immer noch Problem nach Iter 100:**
+```yaml
+# Reiche noch preisunsensibler machen
+high:
+  price_weight: 0.3      # Statt 0.5
+  quality_weight: 2.0    # Statt 1.8
 ```
 
 ---
 
-### Problem: Haushalte kaufen nichts (Revenue = 0)
+### Problem: Nur 2 Firmen verkaufen (Market Concentration)
 
-**Ursache**: Alle Firmen sind zu teuer für Haushalts-Preislimits
+**Ursache**: Quality/Marketing zu ähnlich bei allen Firmen
 
-**Check**:
-```python
-# In run_simulation.py Output schauen:
-Avg Firm Price: 85€
-Avg HH Max Price: 55€  # ← Problem!
-```
-
-**Lösung**: Preis-Range anpassen
+**Lösung**: Größere Initial Ranges
 ```yaml
 initial_ranges:
   firms:
-    price:
-      min: 15.0    # Niedriger starten
-      max: 45.0    # Nicht zu hoch
+    quality:
+      min: 0.5           # Größere Spreizung
+      max: 0.9           # (war 0.65-0.75)
+    marketing:
+      min: 0.3
+      max: 0.7           # (war 0.45-0.55)
 ```
 
 ---
 
-### Problem: Training sehr langsam (mit 3000 Haushalten)
+### Problem: Premium-Firmen gehen alle bankrott
 
-**Mögliche Ursachen:**
-1. Zu wenig RAM → Close other applications
-2. CPU zu schwach → Reduce workers:
-   ```yaml
-   training:
-     resources:
-       num_env_runners: 2  # Statt 4
-   ```
-3. Zu viele Haushalte → Reduce (aber mindestens 2000!):
-   ```yaml
-   environment:
-     n_households: 2000    # Statt 3000
-   ```
+**Ursache**: Zu wenig reiche Haushalte
 
-**Hinweis**: Mit 3000 HH ist Training ca. 30% langsamer als mit 2000 HH, aber Ergebnisse sind besser!
-
----
-
-### Problem: `ModuleNotFoundError: No module named 'ray'`
-
-**Lösung:**
-```bash
-pip install -r requirements.txt
-```
-
----
-
-### Problem: `RuntimeError: CUDA out of memory`
-
-**Lösung**: GPU Training deaktivieren
+**Lösung**: Mehr Reiche
 ```yaml
-training:
-  resources:
-    num_gpus: 0
+initial_ranges:
+  households:
+    wealth_distribution:
+      low: 0.2           # Weniger Arme (war 0.3)
+      medium: 0.5        # Gleich
+      high: 0.3          # Mehr Reiche! (war 0.2)
 ```
 
 ---
 
-### Problem: Survivor Diversity Penalty zu hoch
+### Problem: Fast alle Firmen gehen bankrott (Iteration 1-50)
 
-**Symptom**: Rewards am Ende plötzlich massiv negativ
+**Das ist NORMAL!** Siehe Hauptdokumentation für Details.
 
-**Check in `config.yaml`:**
-```yaml
-economy:
-  reward:
-    survivor_diversity_threshold: 5     # Penalty wenn < 5 survivors
-    survivor_diversity_penalty: 10000   # Pro fehlender Firma
-```
+**Kurz**: Bankruptcy Penalty (-50,000) ist sehr hoch - KI muss erst lernen zu überleben.
 
-**Beispiel**: 3 Survivors → (5-3) × 10,000 = -20,000 Penalty **pro Survivor**!
-
-**Lösung**: Penalty reduzieren oder Threshold senken
-```yaml
-economy:
-  reward:
-    survivor_diversity_threshold: 4     # Weniger streng
-    survivor_diversity_penalty: 5000    # Sanfter
-```
+**Erwartung**:
+- Iteration 20: 1-2 Bankruptcies, 8-9 Survivors ✅
+- Iteration 50: 0-1 Bankruptcies, 9-10 Survivors ✅
+- Iteration 100+: Fast keine Bankruptcies ✅
 
 ---
 
-## 📊 Erwartete Ergebnisse (Nach Rebalancing)
+## 📊 Erwartete Ergebnisse (Mit neuen Features)
 
-### Nach 50 Iterationen (Early Learning)
-- **Survivors**: 3-5 Firmen ⚠️ (noch viele Bankruptcies)
-- **Avg Reward**: -500 bis -100 (Bankruptcy Penalties dominieren)
-- **Bankruptcy Rate**: 50-70%
-- **Market Share**: Stark ungleich
-- **Avg Firm Size**: 60-90 Mitarbeiter
-
-### Nach 100 Iterationen (Intermediate)
-- **Survivors**: 5-7 Firmen ✅
-- **Avg Reward**: -50 bis +50
-- **Bankruptcy Rate**: 30-50%
-- **Market Share**: Gleichmäßiger werdend
-- **Avg Firm Size**: 70-100 Mitarbeiter
-- **Price Stratification**: Beginnt sich zu zeigen
-
-### Nach 150 Iterationen (Good)
-- **Survivors**: 6-8 Firmen ✅✅
-- **Avg Reward**: +20 bis +80
-- **Bankruptcy Rate**: 20-30%
-- **Market Share**: 10-16% pro Firma
-- **Avg Firm Size**: 80-110 Mitarbeiter
-- **Price Range**: 20-70€ (Budget bis Premium)
-
-### Nach 200 Iterationen (Converged) ⭐
-- **Survivors**: 7-9 Firmen ✅✅✅
-- **Avg Reward**: +40 bis +100
+### Nach 100 Iterationen
+- **Survivors**: 8-9 Firmen ✅
+- **Price Range**: 15-65€ (Stratification beginnt!)
+- **Quality Range**: 0.7-1.3
 - **Bankruptcy Rate**: 10-20%
-- **Market Share**: 10-14% pro Firma (sehr balanced!)
-- **Avg Firm Size**: 85-115 Mitarbeiter
-- **Price Stratification**: Klar erkennbar:
-  - Budget: 2-3 Firmen bei 15-35€
-  - Mittelklasse: 3-4 Firmen bei 35-60€
-  - Premium: 1-2 Firmen bei 60-85€
-- **Employment Rate**: 75-85%
-- **Market Dynamics**: Stabil aber mit wechselnden Marktanteilen
+- **Firmengröße**: 70-110 Mitarbeiter
 
-### Vergleich: Alte vs. Neue Parameter
+**Segment-Verteilung:**
+- Budget (<30€): 3-4 Firmen
+- Mainstream (30-60€): 3-4 Firmen
+- Premium (>60€): 1-2 Firmen
 
-| Metrik | ALT (2000 HH, kleine Penalty) | NEU (3000 HH, große Penalty) |
-|--------|-------------------------------|------------------------------|
-| Survivors | 3-5 ❌ | 7-9 ✅ |
-| Monopole | Häufig | Selten |
-| Avg Firm Size | 150-220 | 80-115 |
-| Bankruptcy Learning | Schwach | Stark |
-| Market Balance | Ungleich | Sehr gleichmäßig |
-| Price Competition | Niedrig | Hoch |
-| Reward Stability | Volatil | Stabiler |
+### Nach 200 Iterationen (Optimal) ⭐
+- **Survivors**: 8-10 Firmen ✅✅✅
+- **Price Range**: 15-80€ (KLARE Stratification!)
+- **Quality Range**: 0.7-1.8 (Premium deutlich höher)
+- **Bankruptcy Rate**: <10%
+- **Firmengröße**: 80-120 Mitarbeiter
+- **Market Share**: 8-13% pro Firma (sehr balanced!)
+
+**Segment-Verteilung:**
+- Budget (15-30€): 3-4 Firmen, Quality 0.7-1.0
+- Mainstream (30-60€): 3-4 Firmen, Quality 1.0-1.4
+- Premium (60-85€): 2-3 Firmen, Quality 1.5-1.8
+
+**Profitabilität:**
+- Budget-Firmen: +15k-25k per Episode (Volumen)
+- Mainstream: +20k-30k per Episode (Balance)
+- Premium: +25k-35k per Episode (Marge!) ← BESTE!
 
 ---
 
@@ -488,11 +491,13 @@ economy:
 - **PPO**: Proximal Policy Optimization Algorithmus
 
 ### Key Features dieser Implementation
-1. **Price-Sensitive Sequential Purchasing**: Einzigartige Kombination von Preislimits + sequenziellem Kauf
-2. **Rebalanced Rewards**: Bankruptcy-Vermeidung wichtiger als kurzfristige Profite
-3. **Survivor Diversity Incentive**: KI lernt, Konkurrenz am Leben zu halten
-4. **Hard Capacity Caps**: Verhindert Monopol-Bildung
-5. **Skill-Based Matching**: Realistische Arbeitsmarkt-Dynamik
+1. **🆕 Einkommensbasierte Utility**: Einzigartig! Reiche kaufen Quality, Arme kaufen billig
+2. **Unbegrenzte Qualität**: Premium-Firmen können sich wirklich differenzieren (bis 2.0)
+3. **Price-Sensitive Sequential Purchasing**: Realistische Kaufreihenfolge mit Preislimits
+4. **Rebalanced Rewards**: Bankruptcy-Vermeidung wichtiger als kurzfristige Profite
+5. **Survivor Diversity Incentive**: KI lernt, Konkurrenz am Leben zu halten
+6. **Hard Capacity Caps**: Verhindert Monopol-Bildung
+7. **Skill-Based Matching**: Realistische Arbeitsmarkt-Dynamik
 
 ### Nützliche Ressourcen
 - [Ray RLlib Dokumentation](https://docs.ray.io/en/latest/rllib/index.html)
@@ -502,6 +507,25 @@ economy:
 ---
 
 ## 🆕 Changelog
+
+### Version 2.1 (Feb 2026) - Einkommensbasierte Präferenzen
+
+**MAJOR UPDATE:**
+- ✅ **Wealth-based utility preferences** (rich prefer quality, poor prefer price)
+- ✅ **Unbegrenzte Quality/Marketing** (1.0 → 2.0 cap)
+- ✅ **Natural market segmentation** (budget/mainstream/premium all viable)
+- ✅ **Quality investment cost increased** (30 → 50€ for balance)
+
+**Löst:**
+- ❌ "Race to the Bottom" (alle Firmen bei 10€)
+- ❌ Market Concentration (nur 2 Firmen verkaufen)
+- ❌ Artificial quality cap (Premium-Firmen können nicht differenzieren)
+
+**Expected Impact:**
+- 3-4 Budget-Firmen (15-30€)
+- 3-4 Mainstream-Firmen (30-60€)
+- 2-3 Premium-Firmen (60-85€)
+- ALLE profitabel! ✅
 
 ### Version 2.0 (Feb 2026) - Major Rebalancing
 
@@ -517,13 +541,6 @@ economy:
 - Bankruptcy penalty: -20 → -50,000
 - Fixed costs: 100 → 150
 - Training iterations: 150 → 200
-- Quality/Marketing ranges: Narrowed for fairness
-
-**Expected Impact:**
-- More survivors (7-9 vs 3-5)
-- Better market balance
-- Natural price stratification
-- Stronger bankruptcy avoidance learning
 
 ---
 
