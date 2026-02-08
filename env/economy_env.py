@@ -9,9 +9,12 @@ class SimpleEconomyEnv(MultiAgentEnv):
     """
     Enhanced economy simulation with:
     - SEQUENTIAL PURCHASING - realistic market-clearing mechanism
+    - PRICE-SENSITIVE HOUSEHOLDS - each household has max acceptable price
     - Random household order each step (fair competition)
     - Household skill levels and job matching
-    - Firm bankruptcy mechanism
+    - Firm bankruptcy mechanism with severe penalties
+    - Hard cap on employee expansion (prevent monopolies)
+    - Survivor diversity incentive (keep competitors alive)
     - Extended action space (price, wage, marketing, quality, capacity)
     - Supplier economy (unemployed work for supply chain companies)
     - Enhanced observation space (25 features including market share, trends, competitiveness)
@@ -71,6 +74,9 @@ class SimpleEconomyEnv(MultiAgentEnv):
         self.quality_improvement_cost = invest_cfg.get('quality_improvement', 30.0)
         self.capacity_expansion_cost = invest_cfg.get('capacity_expansion', 50.0)
         
+        # Capacity hard cap (NEW)
+        self.max_employees_hard_cap = econ_cfg.get('max_employees_hard_cap', 150)
+        
         # Bankruptcy parameters
         bankr_cfg = econ_cfg.get('bankruptcy', {})
         self.bankruptcy_threshold = bankr_cfg.get('threshold', -400.0)
@@ -106,6 +112,10 @@ class SimpleEconomyEnv(MultiAgentEnv):
         self.market_share_bonus_weight = reward_cfg.get('market_share_bonus', 10.0)
         self.inventory_penalty_weight = reward_cfg.get('inventory_penalty', 2.0)
         self.exploration_penalty = reward_cfg.get('exploration_penalty', 5.0)
+        
+        # Survivor diversity parameters (NEW)
+        self.survivor_diversity_threshold = reward_cfg.get('survivor_diversity_threshold', 5)
+        self.survivor_diversity_penalty = reward_cfg.get('survivor_diversity_penalty', 10000)
         
         # Bounds
         price_bounds = econ_cfg.get('price_bounds', {'min': 5.0, 'max': 100.0})
@@ -150,6 +160,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         
         money_range = hh_ranges.get('money', {'min': 100.0, 'max': 200.0})
         skill_range = hh_ranges.get('skill_level', {'min': 0.3, 'max': 1.0})
+        max_price_range = hh_ranges.get('max_acceptable_price', {'min': 10.0, 'max': 100.0})
         wealth_dist = hh_ranges.get('wealth_distribution', {'low': 0.3, 'medium': 0.5, 'high': 0.2})
         
         # Initialize firms
@@ -174,13 +185,14 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 'bankrupt': False,
             }
         
-        # Initialize households with skill levels
+        # Initialize households with skill levels AND max acceptable price (NEW)
         wealth_probs = [wealth_dist['low'], wealth_dist['medium'], wealth_dist['high']]
         self.households = []
         for _ in range(self.n_households):
             self.households.append({
                 'money': np.random.uniform(money_range['min'], money_range['max']),
                 'skill_level': np.random.uniform(skill_range['min'], skill_range['max']),
+                'max_acceptable_price': np.random.uniform(max_price_range['min'], max_price_range['max']),
                 'employer': None,
                 'wage': 0.0,
                 'wealth_type': np.random.choice(['low', 'medium', 'high'], p=wealth_probs),
@@ -235,12 +247,13 @@ class SimpleEconomyEnv(MultiAgentEnv):
                     firm['capital'] -= cost
                     firm['quality'] = min(1.0, firm['quality'] + 0.05)
             
-            # Capacity adjustment
+            # Capacity adjustment with HARD CAP (NEW)
             if capacity_action == 0:
                 firm['max_employees'] = max(1, firm['max_employees'] - 1)
             elif capacity_action == 2:
                 cost = self.capacity_expansion_cost
-                if firm['capital'] >= cost:
+                # Check both capital AND hard cap
+                if firm['capital'] >= cost and firm['max_employees'] < self.max_employees_hard_cap:
                     firm['capital'] -= cost
                     firm['max_employees'] += 1
             
@@ -313,7 +326,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
             else:
                 firm['production'] = 0.0
         
-        # Phase 4: SEQUENTIAL PURCHASING (realistic market clearing)
+        # Phase 4: SEQUENTIAL PURCHASING WITH PRICE SENSITIVITY (NEW)
         total_sales = {agent_id: 0.0 for agent_id in active_firms}
         
         # RANDOMIZE household order each step (fairness)
@@ -330,9 +343,19 @@ class SimpleEconomyEnv(MultiAgentEnv):
             
             remaining_budget = budget
             
-            # Calculate utility for all active firms
+            # NEW: Filter firms by price sensitivity
+            max_price = household['max_acceptable_price']
+            affordable_firms = [
+                firm_id for firm_id in active_firms 
+                if self.firms[firm_id]['price'] <= max_price
+            ]
+            
+            if not affordable_firms:
+                continue  # This household can't afford any firm
+            
+            # Calculate utility for affordable firms only
             utilities = {}
-            for firm_id in active_firms:
+            for firm_id in affordable_firms:
                 firm = self.firms[firm_id]
                 price = firm['price']
                 quality = firm['quality']
@@ -401,7 +424,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
             firm = self.firms[agent_id]
             
             if firm['bankrupt']:
-                rewards[agent_id] = -10.0
+                rewards[agent_id] = self.bankruptcy_penalty  # Severe penalty
                 continue
             
             # Revenue from sales
@@ -430,8 +453,8 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 self.bankruptcies_this_episode += 1
                 rewards[agent_id] = self.bankruptcy_penalty
             else:
-                # ENHANCED REWARD SHAPING
-                base_reward = profit / self.reward_scale
+                # REBALANCED REWARD SHAPING
+                base_reward = profit / self.reward_scale  # REDUCED impact (scale 1000 vs 100)
                 
                 # Capital bonus
                 capital_bonus = 0.0
@@ -459,6 +482,19 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 # Total reward
                 rewards[agent_id] = (base_reward + capital_bonus + market_share_bonus + 
                                    inventory_penalty + exploration_penalty)
+        
+        # NEW: Survivor diversity penalty (end of episode)
+        if self.timestep == self.max_steps - 1:
+            active_count = sum(1 for f in self.firms.values() if not f['bankrupt'])
+            
+            if active_count < self.survivor_diversity_threshold:
+                missing_survivors = self.survivor_diversity_threshold - active_count
+                diversity_penalty = missing_survivors * self.survivor_diversity_penalty
+                
+                # Apply penalty to surviving firms (they should have kept competition alive)
+                for agent_id in self._agent_ids:
+                    if not self.firms[agent_id]['bankrupt']:
+                        rewards[agent_id] -= diversity_penalty
         
         self.timestep += 1
         done = self.timestep >= self.max_steps
