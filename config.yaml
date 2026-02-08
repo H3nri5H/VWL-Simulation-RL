@@ -1,11 +1,12 @@
 # VWL Simulation Configuration - Sequential Purchasing Edition
+# Version: Rebalanced for realistic competition
 
 # ============================================================================
 # ENVIRONMENT CONFIGURATION
 # ============================================================================
 environment:
   n_firms: 10                    # Number of competing firms
-  n_households: 2000             # Number of households
+  n_households: 3000             # Number of households (INCREASED for larger market)
   max_steps: 100                 # Steps per episode
 
 # ============================================================================
@@ -21,17 +22,17 @@ initial_ranges:
       min: 15.0                  # Minimum initial wage
       max: 25.0                  # Maximum initial wage
     max_employees:
-      min: 150                   # Minimum capacity (scaled for 2000 HH)
-      max: 250                   # Maximum capacity
+      min: 80                    # REDUCED from 150 (smaller firms)
+      max: 120                   # REDUCED from 250 (prevent monopolies)
     capital:
       min: 5000.0                # Minimum starting capital
       max: 10000.0               # Maximum starting capital
     quality:
-      min: 0.6                   # Minimum initial quality
-      max: 0.8                   # Maximum initial quality
+      min: 0.65                  # NARROWED from 0.6 (fairer start)
+      max: 0.75                  # NARROWED from 0.8 (fairer start)
     marketing:
-      min: 0.4                   # Minimum initial marketing level
-      max: 0.6                   # Maximum initial marketing level
+      min: 0.45                  # NARROWED from 0.4 (fairer start)
+      max: 0.55                  # NARROWED from 0.6 (fairer start)
   
   # Household starting values
   households:
@@ -41,6 +42,9 @@ initial_ranges:
     skill_level:
       min: 0.3                   # Minimum skill (low qualified)
       max: 1.0                   # Maximum skill (highly qualified)
+    max_acceptable_price:        # NEW: Price sensitivity per household
+      min: 10.0                  # Some HH only buy cheap goods
+      max: 100.0                 # Some HH accept premium prices
     wealth_distribution:         # Probability distribution
       low: 0.3                   # 30% low wealth households
       medium: 0.5                # 50% medium wealth households
@@ -50,7 +54,7 @@ initial_ranges:
 # TRAINING CONFIGURATION
 # ============================================================================
 training:
-  iterations: 150                # Increased for better convergence
+  iterations: 200                # INCREASED from 150 (more training needed)
   checkpoint_frequency: 10       # Save checkpoint every N iterations
   
   # PPO Hyperparameters
@@ -88,11 +92,14 @@ economy:
     min: 10.0                    # Minimum allowed wage
     max: 50.0                    # Maximum allowed wage
   
+  # Capacity hard cap (prevent runaway expansion)
+  max_employees_hard_cap: 150    # Absolute maximum employees per firm
+  
   # Production parameters
   production:
     productivity_per_employee: 6.0      # Base units per employee
     cost_per_unit: 2.0                  # Variable production cost per unit
-    fixed_costs: 100.0                  # Fixed costs per step
+    fixed_costs: 150.0                  # INCREASED from 100 (scaled for difficulty)
     storage_cost_per_unit: 0.2          # Storage cost per unit
   
   # Investment costs
@@ -104,7 +111,7 @@ economy:
   # Bankruptcy
   bankruptcy:
     threshold: -2000.0                  # Bankruptcy threshold
-    penalty_reward: -20.0               # Reward penalty for bankruptcy
+    penalty_reward: -50000.0            # MASSIVELY INCREASED from -20 (critical penalty!)
   
   # Household behavior
   households:
@@ -123,49 +130,57 @@ economy:
     base_multiplier: 0.5                # Minimum productivity multiplier
     skill_factor: 0.5                   # Additional multiplier from skills
   
-  # Reward parameters (with reward shaping)
+  # Reward parameters (REBALANCED)
   reward:
-    scale: 100.0                        # Profit normalization
+    scale: 1000.0                       # INCREASED from 100 (profit less influential)
     capital_bonus_divisor: 1000.0       # Capital bonus divisor
     capital_bonus_max: 5.0              # Maximum capital bonus
     market_share_bonus: 10.0            # Market share reward
     inventory_penalty: 2.0              # Excess inventory penalty
     exploration_penalty: 5.0            # Zero revenue penalty
+    # NEW: Survivor diversity incentive
+    survivor_diversity_threshold: 5     # Penalty if fewer survivors
+    survivor_diversity_penalty: 10000   # Penalty per missing survivor
 
 # ============================================================================
-# SEQUENTIAL PURCHASING MODEL
+# SEQUENTIAL PURCHASING WITH PRICE SENSITIVITY
 # ============================================================================
-# NEW PURCHASING MECHANISM:
+# PURCHASING MECHANISM:
 #
 # 1. RANDOM HOUSEHOLD ORDER (each step)
-#    - Households shuffled randomly every step
-#    - Fair competition (not always same HH buys first)
+#    - Households shuffled randomly every step for fairness
 #
-# 2. SEQUENTIAL PURCHASING (realistic!)
-#    - Calculate utility for all firms
+# 2. PRICE SENSITIVITY (NEW!)
+#    - Each household has max_acceptable_price (10-100)
+#    - Firms with price > max_acceptable_price are SKIPPED
+#    - Forces price competition at multiple levels
+#
+# 3. SEQUENTIAL PURCHASING (realistic)
+#    - Calculate utility for affordable firms only
 #    - Sort firms by utility (best → worst)
-#    - Each household:
-#      a) Buy from best firm until money gone OR inventory empty
-#      b) If money left, buy from 2nd best firm
-#      c) Continue until budget exhausted
+#    - Buy from best until budget/inventory exhausted
+#    - Continue to next best firm if budget remains
 #
-# 3. NATURAL MARKET PRESSURE
-#    - Best firms sell most/all inventory
-#    - Medium firms sell some (leftover demand)
-#    - Worst firms sell nothing → must improve or die
+# 4. BALANCED MARKET PRESSURE
+#    - Smaller firms (80-120 employees vs 150-250)
+#    - More households (3000 vs 2000)
+#    - Ensures no single firm can serve entire market
 #
 # EXPECTED OUTCOMES:
 # - 7-9 firms survive (realistic competition)
-# - Market share: 8-15% per firm (balanced)
-# - Dynamic market: shares change as firms adjust
-# - Natural price discovery (firms learn optimal pricing)
-# - Fewer bankruptcies (only truly bad strategies)
+# - Market share: 10-14% per firm (balanced)
+# - Price stratification: Some firms compete on price, some on quality
+# - Employment: ~70-80% employed by firms
+# - Dynamic equilibrium: Firms adjust strategies continuously
 #
-# ADVANTAGES OVER TOP-3 MODEL:
-# - More realistic (people don't split 50/30/20%)
-# - Natural market clearing
-# - All firms get chance to sell (if competitive)
-# - Teaches AI real market dynamics
-# - More survivors = better competition
+# REBALANCING CHANGES:
+# 1. Bankruptcy penalty: -20 → -50,000 (survival is CRITICAL)
+# 2. Profit reward scale: 100 → 1,000 (profit less dominant)
+# 3. Max employees: 150-250 → 80-120 (prevent monopolies)
+# 4. Households: 2000 → 3000 (larger market)
+# 5. Fixed costs: 100 → 150 (higher overhead)
+# 6. Quality/Marketing ranges narrowed (fairer initial conditions)
+# 7. Survivor diversity penalty (incentivize keeping competitors alive)
+# 8. Price sensitivity per household (realistic buyer behavior)
 #
-# Challenge Rating: ⭐⭐⭐⭐ (Challenging but realistic)
+# Challenge Rating: ⭐⭐⭐⭐⭐ (Realistic and challenging)
