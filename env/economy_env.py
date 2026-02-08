@@ -10,11 +10,13 @@ class SimpleEconomyEnv(MultiAgentEnv):
     Enhanced economy simulation with:
     - SEQUENTIAL PURCHASING - realistic market-clearing mechanism
     - PRICE-SENSITIVE HOUSEHOLDS - each household has max acceptable price
+    - WEALTH-BASED UTILITY PREFERENCES - rich prefer quality, poor prefer price
     - Random household order each step (fair competition)
     - Household skill levels and job matching
     - Firm bankruptcy mechanism with severe penalties
     - Hard cap on employee expansion (prevent monopolies)
     - Survivor diversity incentive (keep competitors alive)
+    - NO artificial quality/marketing caps (can improve indefinitely)
     - Extended action space (price, wage, marketing, quality, capacity)
     - Supplier economy (unemployed work for supply chain companies)
     - Enhanced observation space (25 features including market share, trends, competitiveness)
@@ -77,6 +79,14 @@ class SimpleEconomyEnv(MultiAgentEnv):
         # Capacity hard cap (NEW)
         self.max_employees_hard_cap = econ_cfg.get('max_employees_hard_cap', 150)
         
+        # Quality & Marketing bounds (NEW - load from config!)
+        quality_bounds = econ_cfg.get('quality_bounds', {'min': 0.1, 'max': 1.0})
+        marketing_bounds = econ_cfg.get('marketing_bounds', {'min': 0.1, 'max': 1.0})
+        self.quality_min = quality_bounds['min']
+        self.quality_max = quality_bounds['max']
+        self.marketing_min = marketing_bounds['min']
+        self.marketing_max = marketing_bounds['max']
+        
         # Bankruptcy parameters
         bankr_cfg = econ_cfg.get('bankruptcy', {})
         self.bankruptcy_threshold = bankr_cfg.get('threshold', -400.0)
@@ -85,9 +95,19 @@ class SimpleEconomyEnv(MultiAgentEnv):
         # Household parameters
         hh_cfg = econ_cfg.get('households', {})
         self.consumption_rate = hh_cfg.get('consumption_rate', 0.7)
+        
+        # BASE utility weights (modified by wealth type)
         self.utility_price_weight = hh_cfg.get('utility_price_weight', 1.0)
         self.utility_quality_weight = hh_cfg.get('utility_quality_weight', 0.5)
         self.utility_marketing_weight = hh_cfg.get('utility_marketing_weight', 0.3)
+        
+        # NEW: Wealth-based utility modifiers
+        wealth_util_mods = hh_cfg.get('wealth_utility_modifiers', {})
+        self.wealth_utility_modifiers = {
+            'low': wealth_util_mods.get('low', {'price_weight': 1.0, 'quality_weight': 1.0, 'marketing_weight': 1.0}),
+            'medium': wealth_util_mods.get('medium', {'price_weight': 1.0, 'quality_weight': 1.0, 'marketing_weight': 1.0}),
+            'high': wealth_util_mods.get('high', {'price_weight': 1.0, 'quality_weight': 1.0, 'marketing_weight': 1.0})
+        }
         
         # Wealth multipliers
         wealth_mult = hh_cfg.get('wealth_multipliers', {})
@@ -185,7 +205,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 'bankrupt': False,
             }
         
-        # Initialize households with skill levels AND max acceptable price (NEW)
+        # Initialize households with skill levels, max acceptable price, AND wealth type
         wealth_probs = [wealth_dist['low'], wealth_dist['medium'], wealth_dist['high']]
         self.households = []
         for _ in range(self.n_households):
@@ -233,19 +253,21 @@ class SimpleEconomyEnv(MultiAgentEnv):
             
             # Marketing investment
             if marketing_action == 0:
-                firm['marketing'] = max(0.1, firm['marketing'] - 0.1)
+                firm['marketing'] = max(self.marketing_min, firm['marketing'] - 0.1)
             elif marketing_action == 2:
                 cost = self.marketing_cost_per_level
                 if firm['capital'] >= cost:
                     firm['capital'] -= cost
-                    firm['marketing'] = min(1.0, firm['marketing'] + 0.1)
+                    # NO hard cap at 1.0! Can go up to marketing_max (2.0)
+                    firm['marketing'] = min(self.marketing_max, firm['marketing'] + 0.1)
             
             # Quality improvement
             if quality_action == 1:
                 cost = self.quality_improvement_cost
                 if firm['capital'] >= cost:
                     firm['capital'] -= cost
-                    firm['quality'] = min(1.0, firm['quality'] + 0.05)
+                    # NO hard cap at 1.0! Can go up to quality_max (2.0)
+                    firm['quality'] = min(self.quality_max, firm['quality'] + 0.05)
             
             # Capacity adjustment with HARD CAP (NEW)
             if capacity_action == 0:
@@ -326,7 +348,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
             else:
                 firm['production'] = 0.0
         
-        # Phase 4: SEQUENTIAL PURCHASING WITH PRICE SENSITIVITY (NEW)
+        # Phase 4: SEQUENTIAL PURCHASING WITH WEALTH-BASED UTILITY (NEW!)
         total_sales = {agent_id: 0.0 for agent_id in active_firms}
         
         # RANDOMIZE household order each step (fairness)
@@ -343,7 +365,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
             
             remaining_budget = budget
             
-            # NEW: Filter firms by price sensitivity
+            # Filter firms by price sensitivity
             max_price = household['max_acceptable_price']
             affordable_firms = [
                 firm_id for firm_id in active_firms 
@@ -353,7 +375,16 @@ class SimpleEconomyEnv(MultiAgentEnv):
             if not affordable_firms:
                 continue  # This household can't afford any firm
             
-            # Calculate utility for affordable firms only
+            # NEW: Wealth-based utility calculation!
+            wealth_type = household['wealth_type']
+            wealth_mods = self.wealth_utility_modifiers.get(wealth_type, {})
+            
+            # Get modifiers for this wealth type
+            price_weight = self.utility_price_weight * wealth_mods.get('price_weight', 1.0)
+            quality_weight = self.utility_quality_weight * wealth_mods.get('quality_weight', 1.0)
+            marketing_weight = self.utility_marketing_weight * wealth_mods.get('marketing_weight', 1.0)
+            
+            # Calculate utility for affordable firms with WEALTH-BASED weights
             utilities = {}
             for firm_id in affordable_firms:
                 firm = self.firms[firm_id]
@@ -362,9 +393,8 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 marketing = firm['marketing']
                 
                 if price > 0:
-                    numerator = (quality * self.utility_quality_weight + 
-                               marketing * self.utility_marketing_weight)
-                    denominator = price * self.utility_price_weight
+                    numerator = (quality * quality_weight + marketing * marketing_weight)
+                    denominator = price * price_weight
                     utility = numerator / denominator
                     utilities[firm_id] = utility
                 else:
