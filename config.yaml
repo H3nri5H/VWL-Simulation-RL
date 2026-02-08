@@ -1,5 +1,5 @@
 # VWL Simulation Configuration - Sequential Purchasing Edition
-# Version: Rebalanced for realistic competition
+# Version: Income-based preferences for market diversity
 
 # ============================================================================
 # ENVIRONMENT CONFIGURATION
@@ -42,7 +42,7 @@ initial_ranges:
     skill_level:
       min: 0.3                   # Minimum skill (low qualified)
       max: 1.0                   # Maximum skill (highly qualified)
-    max_acceptable_price:        # NEW: Price sensitivity per household
+    max_acceptable_price:        # Price sensitivity per household
       min: 10.0                  # Some HH only buy cheap goods
       max: 100.0                 # Some HH accept premium prices
     wealth_distribution:         # Probability distribution
@@ -92,6 +92,14 @@ economy:
     min: 10.0                    # Minimum allowed wage
     max: 50.0                    # Maximum allowed wage
   
+  # Quality & Marketing bounds (INCREASED - no artificial caps!)
+  quality_bounds:
+    min: 0.1                     # Minimum quality
+    max: 2.0                     # INCREASED from 1.0 (allow premium quality!)
+  marketing_bounds:
+    min: 0.1                     # Minimum marketing
+    max: 2.0                     # INCREASED from 1.0 (allow premium marketing!)
+  
   # Capacity hard cap (prevent runaway expansion)
   max_employees_hard_cap: 150    # Absolute maximum employees per firm
   
@@ -105,7 +113,7 @@ economy:
   # Investment costs
   investment_costs:
     marketing_per_level: 20.0           # Cost to increase marketing by 0.1
-    quality_improvement: 30.0           # Cost to increase quality by 0.05
+    quality_improvement: 50.0           # INCREASED from 30 (premium quality is expensive!)
     capacity_expansion: 50.0            # Cost to add 1 employee slot
   
   # Bankruptcy
@@ -113,12 +121,31 @@ economy:
     threshold: -2000.0                  # Bankruptcy threshold
     penalty_reward: -50000.0            # MASSIVELY INCREASED from -20 (critical penalty!)
   
-  # Household behavior
+  # Household behavior (BASE weights - modified by wealth type!)
   households:
     consumption_rate: 0.7               # % of money spent per step
-    utility_price_weight: 1.0           # Weight of price in utility
-    utility_quality_weight: 0.5         # Weight of quality in utility
-    utility_marketing_weight: 0.3       # Weight of marketing in utility
+    
+    # BASE utility weights (modified per wealth type below)
+    utility_quality_weight: 0.5         # Base weight of quality in utility
+    utility_marketing_weight: 0.3       # Base weight of marketing in utility
+    utility_price_weight: 1.0           # Base weight of price in utility
+    
+    # WEALTH-BASED UTILITY MODIFIERS (NEW!)
+    # These multiply the base weights based on household wealth type
+    wealth_utility_modifiers:
+      low:
+        price_weight: 1.5               # Low-wealth: VERY price sensitive (1.0 × 1.5 = 1.5)
+        quality_weight: 0.6             # Low-wealth: Less care about quality (0.5 × 0.6 = 0.3)
+        marketing_weight: 0.7           # Low-wealth: Less influenced by ads (0.3 × 0.7 = 0.21)
+      medium:
+        price_weight: 1.0               # Medium-wealth: Normal (1.0 × 1.0 = 1.0)
+        quality_weight: 1.0             # Medium-wealth: Normal (0.5 × 1.0 = 0.5)
+        marketing_weight: 1.0           # Medium-wealth: Normal (0.3 × 1.0 = 0.3)
+      high:
+        price_weight: 0.5               # High-wealth: Less price sensitive! (1.0 × 0.5 = 0.5)
+        quality_weight: 1.8             # High-wealth: VERY quality focused (0.5 × 1.8 = 0.9)
+        marketing_weight: 1.5           # High-wealth: More influenced by branding (0.3 × 1.5 = 0.45)
+    
     # Wealth type consumption multipliers
     wealth_multipliers:
       low: 0.8                          # Low wealth: save more
@@ -143,44 +170,44 @@ economy:
     survivor_diversity_penalty: 10000   # Penalty per missing survivor
 
 # ============================================================================
-# SEQUENTIAL PURCHASING WITH PRICE SENSITIVITY
+# INCOME-BASED UTILITY PREFERENCES
 # ============================================================================
-# PURCHASING MECHANISM:
+# UTILITY CALCULATION (per wealth type):
 #
-# 1. RANDOM HOUSEHOLD ORDER (each step)
-#    - Households shuffled randomly every step for fairness
+# LOW-WEALTH HOUSEHOLDS (30% - Budget Segment):
+#   Utility = (quality × 0.3 + marketing × 0.21) / (price × 1.5)
+#   → Very price sensitive! Cheap products win
+#   → Will buy from 15-35€ firms with decent quality
 #
-# 2. PRICE SENSITIVITY (NEW!)
-#    - Each household has max_acceptable_price (10-100)
-#    - Firms with price > max_acceptable_price are SKIPPED
-#    - Forces price competition at multiple levels
+# MEDIUM-WEALTH HOUSEHOLDS (50% - Mainstream):
+#   Utility = (quality × 0.5 + marketing × 0.3) / (price × 1.0)
+#   → Balanced: Good value for money
+#   → Will buy from 25-60€ firms with good quality/marketing mix
 #
-# 3. SEQUENTIAL PURCHASING (realistic)
-#    - Calculate utility for affordable firms only
-#    - Sort firms by utility (best → worst)
-#    - Buy from best until budget/inventory exhausted
-#    - Continue to next best firm if budget remains
+# HIGH-WEALTH HOUSEHOLDS (20% - Premium Segment):
+#   Utility = (quality × 0.9 + marketing × 0.45) / (price × 0.5)
+#   → Quality & brand focused! Price less important
+#   → Will buy from 50-100€ firms with high quality
 #
-# 4. BALANCED MARKET PRESSURE
-#    - Smaller firms (80-120 employees vs 150-250)
-#    - More households (3000 vs 2000)
-#    - Ensures no single firm can serve entire market
+# EXAMPLE:
+# Budget Firm: Price=20€, Quality=0.7, Marketing=0.5
+#   Low-wealth utility:  (0.7×0.3 + 0.5×0.21) / (20×1.5) = 0.0105  ← HIGH
+#   High-wealth utility: (0.7×0.9 + 0.5×0.45) / (20×0.5) = 0.0855  ← VERY HIGH
+#
+# Premium Firm: Price=70€, Quality=1.8, Marketing=1.5
+#   Low-wealth utility:  (1.8×0.3 + 1.5×0.21) / (70×1.5) = 0.0081  ← LOW
+#   High-wealth utility: (1.8×0.9 + 1.5×0.45) / (70×0.5) = 0.0656  ← HIGH
+#
+# NATURAL MARKET SEGMENTATION:
+# - Budget firms (15-35€): Target low & medium wealth (80% of market)
+# - Premium firms (50-100€): Target high wealth (20% of market)
+# - Both strategies can be profitable!
+# - No "race to the bottom" - quality matters for rich customers!
 #
 # EXPECTED OUTCOMES:
-# - 7-9 firms survive (realistic competition)
-# - Market share: 10-14% per firm (balanced)
-# - Price stratification: Some firms compete on price, some on quality
-# - Employment: ~70-80% employed by firms
-# - Dynamic equilibrium: Firms adjust strategies continuously
+# - 3-4 budget firms (low price, medium quality)
+# - 3-4 mainstream firms (medium price, good quality)
+# - 2-3 premium firms (high price, high quality)
+# - ALL profitable in their segments! ✅
 #
-# REBALANCING CHANGES:
-# 1. Bankruptcy penalty: -20 → -50,000 (survival is CRITICAL)
-# 2. Profit reward scale: 100 → 1,000 (profit less dominant)
-# 3. Max employees: 150-250 → 80-120 (prevent monopolies)
-# 4. Households: 2000 → 3000 (larger market)
-# 5. Fixed costs: 100 → 150 (higher overhead)
-# 6. Quality/Marketing ranges narrowed (fairer initial conditions)
-# 7. Survivor diversity penalty (incentivize keeping competitors alive)
-# 8. Price sensitivity per household (realistic buyer behavior)
-#
-# Challenge Rating: ⭐⭐⭐⭐⭐ (Realistic and challenging)
+# Challenge Rating: ⭐⭐⭐⭐⭐ (Realistic market dynamics)
