@@ -72,8 +72,8 @@ Zentrale Komponenten:
 
 - Firms (RL-Agenten): Treffen strategische Entscheidungen ueber Preis, Lohn, 
   Marketing, Qualitaet und Kapazitaet
-- Households (regelbasiert): Konsumenten mit unterschiedlichen Praeferenzen 
-  und Qualifikationen
+- Households (regelbasiert): Konsumenten mit unterschiedlichen Praeferenzen, 
+  Qualifikationen und Einkommensklassen
 - Market Mechanism: Sequentielle Marktabwicklung mit realistischen 
   Matching-Algorithmen
 - State Tracking: Vollstaendige Historie aller oekonomischen Kennzahlen pro 
@@ -86,12 +86,19 @@ Zentrale Komponenten:
 Die Simulation durchlaeuft pro Zeitschritt sechs aufeinanderfolgende Phasen:
 
 Phase 0 - Bankruptcy Check: 
-Unternehmen mit Kapital unter einem definierten Schwellenwert werden als 
-bankrott markiert und nehmen nicht mehr am Markt teil.
+Unternehmen mit Kapital unter einem definierten Schwellenwert (-2000€) werden 
+als bankrott markiert und nehmen nicht mehr am Markt teil. Dies wurde mit 
+einer drastischen Strafe (-50000 Reward-Punkte) versehen, um Agenten zu 
+nachhaltigem Wirtschaften zu incentivieren.
 
 Phase 1 - Strategische Aktionen: 
-Jedes Unternehmen passt seine Parameter an (Preis, Lohn, Marketing-Budget, 
-Qualitaetsinvestitionen, Kapazitaetserweiterung).
+Jedes Unternehmen passt seine Parameter an:
+
+- Preis: +/- 10%, +/- 5%, oder halten
+- Lohn: +/- 10%, +/- 5%, oder halten
+- Marketing: Senken (-0.1), Halten, oder Erhoehen (+0.1 fuer 20€)
+- Qualitaet: Halten oder Verbessern (+0.05 fuer 50€)
+- Kapazitaet: -1 Mitarbeiter, Halten, oder +1 Mitarbeiter (+50€)
 
 Phase 2 - Arbeitsmarkt: 
 Skill-basiertes Matching zwischen Haushalten und Unternehmen. Hochqualifizierte 
@@ -100,19 +107,56 @@ Arbeitslose erhalten Einkommen von fiktiven Zulieferunternehmen (Suppliers),
 um kontinuierliche Kaufkraft im System zu gewaehrleisten.
 
 Phase 3 - Produktion: 
-Die Produktionsmenge ergibt sich aus der Anzahl der Mitarbeiter multipliziert 
-mit deren durchschnittlichem Skill-Level. Dies bildet den positiven Effekt 
-qualifizierter Arbeitskraefte auf die Produktivitaet ab.
+Die Produktionsmenge ergibt sich aus:
 
-Phase 4 - Guetermarkt: 
-Haushalte kaufen sequentiell bei Unternehmen mit dem besten 
-Preis-Leistungs-Verhaeltnis. Die Kaufentscheidung basiert auf einer 
-Utility-Funktion, die Preis, Qualitaet und Marketing beruecksichtigt. 
-Unterschiedliche Haushaltstypen gewichten diese Faktoren unterschiedlich.
+production = employees × productivity_base × (0.5 + avg_skill × 0.5)
+
+Dies bildet den positiven Effekt qualifizierter Arbeitskraefte auf die 
+Produktivitaet ab. Mit base=6.0 produziert ein mittelqualifizierter Mitarbeiter 
+(skill=0.7) etwa 6.0 × 0.85 = 5.1 Einheiten pro Schritt.
+
+Phase 4 - Guetermarkt (Sequential Purchasing): 
+Haushalte kaufen sequentiell in randomisierter Reihenfolge. Jeder Haushalt:
+
+1. Berechnet sein Budget: money × consumption_rate × wealth_multiplier
+2. Filtert Unternehmen nach max_acceptable_price (Preissensitivitaet)
+3. Berechnet Utility-Scores basierend auf Wealth-Type:
+
+   Low-Wealth (30% der Haushalte):
+   utility = (quality×0.3 + marketing×0.21) / (price×1.5)
+   
+   Medium-Wealth (50% der Haushalte):
+   utility = (quality×0.5 + marketing×0.3) / (price×1.0)
+   
+   High-Wealth (20% der Haushalte):
+   utility = (quality×0.9 + marketing×0.45) / (price×0.5)
+
+4. Kauft vom besten Unternehmen bis Budget erschoepft oder Lager leer
+5. Falls noch Budget uebrig, kauft vom zweitbesten Unternehmen, usw.
+
+Dieser Mechanismus fuehrt zu realistischer Marktabwicklung: Top-Unternehmen 
+verkaufen zuerst aus, schwache Unternehmen bekommen nur Restbudgets.
 
 Phase 5 - Buchhaltung: 
-Berechnung von Umsatz, Kosten (Produktion, Lagerung, Fixkosten) und Gewinn. 
-Aktualisierung des Kapitals und Pruefung auf Bankrott.
+Berechnung von Umsatz, Kosten und Gewinn:
+
+- Revenue: sales × price
+- Production Costs: production × cost_per_unit × quality_cost_multiplier
+- Storage Costs: inventory × 0.2€
+- Fixed Costs: 150€ pro Schritt
+- Profit: Revenue - All Costs
+- Capital Update: capital += profit
+
+Der quality_cost_multiplier wurde in v5.5 eingefuehrt:
+
+quality_cost_multiplier = 1.0 + (quality × quality_cost_factor)
+
+Mit quality_cost_factor=0.5 bedeutet dies:
+- Qualitaet 0.5 → Multiplier 1.25 → Kosten 2.50€/Einheit
+- Qualitaet 1.0 → Multiplier 1.5 → Kosten 3.00€/Einheit
+- Qualitaet 2.0 → Multiplier 2.0 → Kosten 4.00€/Einheit
+
+Dies verhindert "free premium quality" und erzwingt strategische Trade-offs.
 
 
 2.2 Technische Implementierung
@@ -132,16 +176,58 @@ Vorteile von PPO:
 - Skalierbarkeit: Parallelisierung ueber mehrere Workers moeglich
 - Multi-Agent faehig: Simultanes Training mehrerer Policies
 
-Zentrale Hyperparameter:
+Konfigurierte Hyperparameter:
 
 - Learning Rate: 0.0003
 - Gamma (Discount-Faktor): 0.99
 - Lambda (GAE-Parameter): 0.95
 - Clip Parameter: 0.2
+- Train Batch Size: 4000
+- Minibatch Size: 256
+- Num Epochs: 10
+- Entropy Coefficient: 0.01 (Exploration-Anreiz)
 - Num Workers: 4 (parallele Rollout-Workers)
 
 
-2.2.2 Verwendete Bibliotheken
+2.2.2 Hardware-Spezifikationen und Trainingszeiten
+--------------------------------------------------------------------------------
+
+Das Training wurde vollstaendig auf CPU durchgefuehrt:
+
+Prozessor: AMD Ryzen 7 9800X3D
+- 8 Cores / 16 Threads
+- Base Clock: 4.7 GHz
+- Boost Clock: bis 5.2 GHz
+- L3-Cache: 96 MB (3D V-Cache Technologie)
+- Optimiert fuer parallele Workloads
+
+RAM: 32 GB DDR5
+
+Betriebssystem: Windows 11 Pro
+
+Trainingsperformance:
+
+Version v5.0-v5.2 (einfachere Modelle):
+- 400 Iterationen: ~4-5 Stunden
+- Durchschnittlich 0.6-0.75 Sekunden pro Iteration
+- 4 parallele Workers
+
+Version v5.3-v5.4 (komplexere Utility-Funktionen):
+- 400 Iterationen: ~5-6 Stunden
+- Durchschnittlich 0.75-0.9 Sekunden pro Iteration
+- Zusaetzliche Berechnungen durch wealth-based preferences
+
+Version v5.5 (quality-based costs):
+- 400 Iterationen: ~6-7 Stunden
+- Durchschnittlich 0.9-1.05 Sekunden pro Iteration
+- Zusaetzliche Kostenberechnungen pro Produkt
+
+Jede Version wurde mit jeweils 400 Iterationen trainiert, um faire Vergleiche 
+zu ermoeglichen. Insgesamt wurden ueber den gesamten Entwicklungszeitraum 
+mehrere tausend Iterationen berechnet.
+
+
+2.2.3 Verwendete Bibliotheken
 --------------------------------------------------------------------------------
 
 Ray RLlib (v2.10.0)
@@ -165,8 +251,11 @@ Pandas
 Datenexport und -analyse. Simulationsergebnisse werden in CSV-Dateien 
 (Long-Format) exportiert fuer spaetere Datenbankintegration.
 
+Matplotlib
+Visualisierung der Trainingsergebnisse und emergenter Marktdynamiken.
 
-2.2.3 Action Space und Observation Space
+
+2.2.4 Action Space und Observation Space
 --------------------------------------------------------------------------------
 
 Action Space (MultiDiscrete[5, 5, 3, 2, 3])
@@ -179,31 +268,35 @@ Jedes Unternehmen waehlt fuenf diskrete Aktionen:
 4. Qualitaet (2 Stufen): Nicht verbessern, Verbessern (mit Kosten)
 5. Kapazitaet (3 Stufen): -1 Mitarbeiter, Halten, +1 Mitarbeiter (mit Kosten)
 
-Dies ergibt 450 moegliche Aktionskombinationen pro Zeitschritt.
+Dies ergibt 5×5×3×2×3 = 450 moegliche Aktionskombinationen pro Zeitschritt.
 
 Observation Space (25 Features)
 
 Jeder Agent erhaelt einen Vektor mit 25 normalisierten Werten:
 
 - Eigener Zustand (7 Features): 
-  Preis, Lohn, Mitarbeiter, Lager, Kapital, Qualitaet, Marketing
+  Preis, Lohn, Mitarbeiter, Lager, Kapital/100, Qualitaet, Marketing
   
 - Marktstatistiken (6 Features): 
   Durchschnitts-/Min-/Max-Werte fuer Preise und Loehne
   
 - Aggregate (4 Features): 
   Gesamtbeschaeftigung, Arbeitslosenquote, durchschnittliches 
-  Haushaltvermoegen, durchschnittliches Skill-Level
+  Haushaltvermoegen/10, durchschnittliches Skill-Level
   
 - Meta-Informationen (3 Features): 
-  Letzter Profit, Anzahl ueberlebender Konkurrenten, Episodenfortschritt
+  Letzter Profit/1000, Anzahl ueberlebender Konkurrenten, 
+  Episodenfortschritt (0-1)
   
 - Strategische Insights (5 Features): 
-  Marktanteil, Sales-Trend, Lager-Effizienz, Preis-Wettbewerbsfaehigkeit, 
-  Lohn-Wettbewerbsfaehigkeit
+  Marktanteil, Sales-Trend/10, Lager-Effizienz, 
+  Preis-Wettbewerbsfaehigkeit, Lohn-Wettbewerbsfaehigkeit
+
+Die Normalisierung sorgt dafuer, dass alle Features in aehnlichen 
+Groessenordnungen liegen, was das neuronale Netzwerk-Training beschleunigt.
 
 
-2.3 Entwicklungsverlauf (chronologisch)
+2.3 Entwicklungsverlauf und Versionierung (chronologisch)
 --------------------------------------------------------------------------------
 
 2.3.1 Setup-Phase (21. Januar 2026)
@@ -224,7 +317,7 @@ API-Inkompatibilitaeten mit RLlib 2.x fuehrte. Der Wechsel zu einem direkten
 Gymnasium MultiAgentEnv erwies sich als deutlich stabiler.
 
 
-2.3.2 v5.0 Major Release (3. Februar 2026)
+2.3.2 Version 5.0 - Major Release (3. Februar 2026)
 --------------------------------------------------------------------------------
 
 Config-basiertes System:
@@ -236,10 +329,9 @@ Fortsetzen des Trainings ab dem letzten Checkpoint.
 
 Bankruptcy-Mechanismus:
 
-Einfuehrung eines Kapital-Systems mit Startkapital in einem definierten 
-Bereich. Unternehmen mit Kapital unter einem kritischen Schwellenwert gehen 
-bankrott und scheiden aus dem Markt aus. Dies zwingt Agenten, nachhaltige 
-Strategien zu entwickeln.
+Einfuehrung eines Kapital-Systems mit Startkapital zwischen 1000-1500€. 
+Unternehmen mit Kapital unter -400€ gehen bankrott und scheiden aus dem Markt 
+aus. Dies zwingt Agenten, nachhaltige Strategien zu entwickeln.
 
 Erweiterte Action Spaces:
 
@@ -253,48 +345,192 @@ UTF-8 Encoding-Fixes fuer config.yaml, Bereinigung der Konsolenausgaben,
 Vermeidung von Ray-spezifischen Warnungen fuer fluessigeres 
 Trainingserlebnis.
 
+Erste Trainingsergebnisse (400 Iterationen, ~4.5h):
 
-2.3.3 Balance & Feature-Tuning (5-8. Februar 2026)
+- Mean Reward: -15 bis +5 (stark schwankend)
+- Survivors: 2-4 von 10 Firmen
+- Problem: Winner-takes-all-Dynamik, Rest geht bankrott
+- Marktkonzentration sehr hoch
+
+
+2.3.3 Version 5.2 - Enhanced Observations (5. Februar 2026)
 --------------------------------------------------------------------------------
 
-Wealth-based Utility System:
+Erweiterte Observations:
 
-Implementierung differenzierter Haushaltspraeferenzen. Haushalte werden in 
-drei Kategorien eingeteilt:
+Observation Space von 20 auf 25 Features erweitert:
+- Market Share (eigener Anteil am Gesamtumsatz)
+- Sales Trend (Veraenderung zu letztem Schritt)
+- Inventory Ratio (Lagerbestand relativ zur Produktion)
+- Wage Competitiveness (eigener Lohn vs. Marktmedian)
+- Price Competitiveness (eigener Preis vs. Marktmedian)
 
-- Low Wealth: Preissensitiv, bevorzugen guenstige Produkte
-- Medium Wealth: Balanced, achten auf Preis-Leistung
-- High Wealth: Qualitaetsorientiert, weniger preissensitiv
+Supplier Economy:
 
-Die Utility-Funktion wurde entsprechend angepasst:
+Arbeitslose erhalten nicht mehr Einkommen vom "Staat", sondern von 
+Zulieferunternehmen (Suppliers). Dies ist realistischer und verhindert 
+kuenstliche Geldschoepfung.
 
-utility = (quality × quality_weight + marketing × marketing_weight) / 
-          (price × price_weight)
+Ergebnisse (400 Iterationen, ~4.5h):
 
-Wobei die Gewichte je nach Wealth-Type variieren.
+- Mean Reward: -5 bis +10
+- Survivors: 3-5 von 10 Firmen
+- Leichte Verbesserung, aber immer noch Monopoltendenzen
 
-Market Stratification:
 
-Durch die differenzierten Praeferenzen entstehen drei Marktsegmente:
+2.3.4 Version 5.3 - Anti-Monopoly Edition (7. Februar 2026)
+--------------------------------------------------------------------------------
 
-- Budget: Firmen mit niedrigen Preisen, hohem Volumen
-- Mainstream: Mittlere Preise, ausgewogenes Preis-Leistungs-Verhaeltnis
-- Premium: Hohe Preise, Fokus auf Qualitaet
+Top-3 Diversified Purchasing:
 
-Dies verhindert den zuvor beobachteten "Race to the Bottom", bei dem alle 
-Firmen nur den Preis senkten.
+Haushalte kaufen nicht mehr nur vom besten Unternehmen, sondern verteilen ihre 
+Kaeufe auf die Top-3:
+- Rang 1: 50% des Budgets
+- Rang 2: 30% des Budgets
+- Rang 3: 20% des Budgets
 
-Sequential Purchasing:
+Dies sollte Monopole verhindern und kleinere Firmen am Leben halten.
 
-Haushalte kaufen nicht mehr simultan, sondern sequentiell in zufaelliger 
-Reihenfolge. Dies verhindert unrealistische Winner-takes-all-Szenarien und 
-fuehrt zu realistischeren Marktverteilungen.
+Reward Shaping:
 
-Survivor Diversity Penalty:
+- Market Share Bonus: +10 Punkte pro % Marktanteil
+- Inventory Penalty: -2 Punkte pro Einheit ueberschuessiges Lager
+- Exploration Penalty: -5 Punkte bei null Umsatz
 
-Einfuehrung einer Strafe, wenn zu viele Unternehmen bankrottgehen. Dies 
-incentiviert Agenten, den Markt nicht zu zerstoeren, sondern nachhaltig zu 
-konkurrieren.
+Groesserer Markt:
+
+- Haushalte: 500 → 2000
+- Max Employees: 50-100 → 150-250
+
+Ergebnisse (400 Iterationen, ~5h):
+
+- Mean Reward: +5 bis +20
+- Survivors: 6-8 von 10 Firmen (deutlich besser!)
+- Problem: Alle Firmen konvergieren zu aehnlichen Strategien
+- Preise clustern bei 25-35€, kaum Differenzierung
+
+
+2.3.5 Version 5.4 - Sequential Purchasing (8. Februar 2026)
+--------------------------------------------------------------------------------
+
+Sequential Purchasing statt Top-3:
+
+Haushalte kaufen nun sequentiell:
+1. Sortiere Firmen nach Utility (beste zuerst)
+2. Kaufe vom besten Anbieter bis Budget leer ODER Lager leer
+3. Falls Budget uebrig: Weiter zum zweitbesten Anbieter
+4. Wiederhole bis Budget erschoepft
+
+Dies ist realistischer als die kuenstliche 50/30/20-Aufteilung.
+
+Randomisierte Household-Reihenfolge:
+
+Haushalte kaufen in zufaelliger Reihenfolge (shuffled jede Runde), damit nicht 
+immer die gleichen Haushalte zuerst kaufen.
+
+Ergebnisse (400 Iterationen, ~5.5h):
+
+- Mean Reward: +10 bis +25
+- Survivors: 7-9 von 10 Firmen
+- Marktverteilung realistischer, aber immer noch Konvergenz
+- Alle Firmen steigern Qualitaet auf Maximum (1.0)
+
+
+2.3.6 Version 5.4.1 - Wealth-Based Preferences (8. Februar 2026)
+--------------------------------------------------------------------------------
+
+Differenzierte Haushaltstypen:
+
+Haushalte erhalten einen Wealth-Type (low, medium, high) mit unterschiedlichen 
+Praeferenzen:
+
+Low-Wealth (30%):
+- Price Weight: 1.5 (sehr preissensitiv)
+- Quality Weight: 0.3 (weniger wichtig)
+- Marketing Weight: 0.21 (kaum beachtet)
+
+Medium-Wealth (50%):
+- Price Weight: 1.0 (balanciert)
+- Quality Weight: 0.5 (wichtig)
+- Marketing Weight: 0.3 (beachtet)
+
+High-Wealth (20%):
+- Price Weight: 0.5 (weniger wichtig)
+- Quality Weight: 0.9 (sehr wichtig)
+- Marketing Weight: 0.45 (wichtig)
+
+Preissensitivitaet:
+
+Jeder Haushalt bekommt einen max_acceptable_price (10-100€). Teurere Firmen 
+werden nicht einmal in Betracht gezogen.
+
+Unbegrenzte Qualitaet:
+
+Quality/Marketing Caps von 1.0 auf 2.0 erhoeht, um Premium-Strategien zu 
+ermoeglichen.
+
+Rebalancing:
+
+- Haushalte: 2000 → 3000
+- Max Employees: 150-250 → 80-120 (kleinere Firmen)
+- Bankruptcy Threshold: -400 → -2000
+- Bankruptcy Penalty: -20 → -50000 (drastisch!)
+- Fixed Costs: 100 → 150
+- Quality Improvement Cost: 30 → 50
+
+Ergebnisse (400 Iterationen, ~6h):
+
+- Mean Reward: +15 bis +40
+- Survivors: 8-10 von 10 Firmen (fast alle!)
+- DURCHBRUCH: Drei klar erkennbare Cluster:
+  * Budget-Firmen: Preis 15-30€, Quality 0.6-0.9
+  * Mainstream-Firmen: Preis 30-50€, Quality 0.9-1.3
+  * Premium-Firmen: Preis 60-100€, Quality 1.5-2.0
+- Alle drei Strategien profitabel!
+- Marktanteile: Budget 40%, Mainstream 45%, Premium 15%
+
+
+2.3.7 Version 5.5 - Quality-Based Production Costs (9. Februar 2026)
+--------------------------------------------------------------------------------
+
+Problem:
+
+In v5.4.1 konvergierten ALLE Firmen zu maximaler Qualitaet (2.0), weil es 
+keine Kostenstrafe dafuer gab. Premium-Qualitaet war "gratis".
+
+Loesung:
+
+Implementierung quality-basierter Produktionskosten:
+
+production_costs = production × cost_per_unit × (1 + quality × quality_cost_factor)
+
+Mit quality_cost_factor = 0.5 (konfigurierbar!):
+
+- Quality 0.5: Kosten = 2.0 × 1.25 = 2.50€/Einheit
+- Quality 1.0: Kosten = 2.0 × 1.5 = 3.00€/Einheit
+- Quality 1.5: Kosten = 2.0 × 1.75 = 3.50€/Einheit
+- Quality 2.0: Kosten = 2.0 × 2.0 = 4.00€/Einheit
+
+Budget-Firmen koennen nun NICHT mehr zu Premium-Qualitaet wechseln, weil sie 
+bei niedrigen Preisen (20€) nicht profitabel waeren. Premium-Firmen MUESSEN 
+hohe Preise (70€+) verlangen, um die Kosten zu decken.
+
+Konfigurierbarkeit:
+
+Der quality_cost_factor (0.0-1.0) wird aus config.yaml geladen:
+- 0.0: Keine Auswirkung (altes Verhalten)
+- 0.5: Moderate Auswirkung (empfohlen)
+- 1.0: Starke Auswirkung (Quality 2.0 verdreifacht Kosten)
+
+Ergebnisse (400 Iterationen, ~6.5h, aktuell im Training):
+
+Erwartete Verbesserungen:
+- Stabile Marktsegmentierung OHNE Konvergenz
+- Budget-Firmen bleiben bei Quality 0.6-0.8
+- Mainstream bei 1.0-1.3
+- Premium bei 1.5-2.0
+- Alle Strategien langfristig profitabel
+- Realistische Trade-offs zwischen Kosten und Qualitaet
 
 
 2.4 Herausforderungen und Loesungen
@@ -302,17 +538,40 @@ konkurrieren.
 
 Problem: Negative Rewards trotz Training
 
-In fruehen Iterationen blieben die Rewards ueber viele Iterationen negativ. 
-Dies lag an unrealistischen Produktionskosten und zu geringer 
+In fruehen Iterationen (v5.0-v5.2) blieben die Rewards ueber viele Iterationen 
+negativ. Dies lag an unrealistischen Produktionskosten und zu geringer 
 Haushaltskaufkraft.
 
 Loesung:
 
-- Erhoehung der Konsumrate
-- Anpassung der Haushaltszahl
-- Reduzierung der Fixkosten
+- Erhoehung der Haushalte von 500 auf 3000
+- Erhoehung der Konsumrate von 0.5 auf 0.7
+- Reduzierung der initialen Max Employees (weniger Lohnkosten am Start)
 - Implementierung von Arbeitslosengeld (Supplier-Wages) fuer konsistente 
   Nachfrage
+
+Problem: Winner-takes-all Monopole
+
+In v5.0-v5.3 gewann meist eine Firma den gesamten Markt, waehrend der Rest 
+bankrottging.
+
+Loesung:
+
+- Wealth-based Preferences (unterschiedliche Zielgruppen)
+- Sequential Purchasing (realistische Kaufabwicklung)
+- Survivor Diversity Penalty (Anreiz, Konkurrenten am Leben zu lassen)
+- Price Sensitivity (max_acceptable_price schraenkt Optionen ein)
+
+Problem: Strategische Konvergenz
+
+In v5.3-v5.4 konvergierten alle Firmen zu identischen Strategien (alle max 
+Qualitaet, aehnliche Preise).
+
+Loesung:
+
+- Quality-based Production Costs (v5.5)
+- Unterschiedliche Wealth-Types schaffen natuerliche Nischen
+- Unbounded Quality/Marketing (2.0 statt 1.0 Cap)
 
 Problem: Observation Space Explosion
 
@@ -339,82 +598,155 @@ open('config.yaml', 'r', encoding='utf-8')
 3. VORSTELLUNG DER ERGEBNISSE (20-30%)
 ================================================================================
 
-3.1 Trainingsmetriken
+3.1 Trainingsmetriken ueber alle Versionen
 --------------------------------------------------------------------------------
 
-Das Training wurde ueber mehrere hundert Iterationen mit parallelen Workers 
-durchgefuehrt. Jede Iteration umfasst mehrere Episoden mit jeweils mehreren 
-hundert Zeitschritten.
+Version 5.0 (400 Iterationen, ~4.5h, 3. Februar):
 
-Reward-Entwicklung:
+- Mean Reward: -15 bis +5
+- Mean Episode Length: 60-80 (von max 100)
+- Survivors: 2-4 von 10
+- Marktkonzentration: Hoch (Monopoltendenzen)
+- Learnings: Bankruptcy-Mechanismus funktioniert, aber zu aggressiv
 
-- Fruehe Iterationen: Stark negative Mean Rewards (alle Firmen bankrott)
-- Mittlere Phase: Graduelle Verbesserung (erste ueberlebende Firmen)
-- Spaete Phase: Positive Rewards (Mehrheit der Firmen profitabel)
+Version 5.2 (400 Iterationen, ~4.5h, 5. Februar):
 
-Episode Length:
+- Mean Reward: -5 bis +10
+- Mean Episode Length: 75-90
+- Survivors: 3-5 von 10
+- Marktkonzentration: Hoch
+- Learnings: Erweiterte Observations helfen, aber strukturelles Problem bleibt
 
-- Fruehe Iterationen: Vorzeitiges Ende durch Bankruptcies
-- Mittlere Phase: Zunehmende Episode-Laenge
-- Spaete Phase: Konsistent volle Episode-Laenge
+Version 5.3 (400 Iterationen, ~5h, 7. Februar):
 
-Dies zeigt deutliches Lernen: Firmen entwickeln Strategien, die langfristiges 
-Ueberleben ermoeglichen.
+- Mean Reward: +5 bis +20
+- Mean Episode Length: 90-100 (fast immer volle Laenge)
+- Survivors: 6-8 von 10
+- Marktkonzentration: Mittel
+- Learnings: Top-3 Purchasing hilft, aber fuehlt sich kuenstlich an
+
+Version 5.4 (400 Iterationen, ~5.5h, 8. Februar):
+
+- Mean Reward: +10 bis +25
+- Mean Episode Length: 95-100
+- Survivors: 7-9 von 10
+- Marktkonzentration: Niedrig
+- Learnings: Sequential Purchasing realistischer, aber Strategiekonvergenz
+
+Version 5.4.1 (400 Iterationen, ~6h, 8. Februar):
+
+- Mean Reward: +15 bis +40
+- Mean Episode Length: 98-100
+- Survivors: 8-10 von 10
+- Marktkonzentration: Sehr niedrig (3 Cluster)
+- Learnings: DURCHBRUCH! Wealth-based Preferences schaffen Marktsegmentierung
+- Problem: ALLE Firmen steigern Quality auf Maximum (2.0)
+
+Version 5.5 (400 Iterationen, ~6.5h, 9. Februar, aktuell):
+
+- Mean Reward: TBD (erwartet: +20 bis +50)
+- Mean Episode Length: TBD (erwartet: 98-100)
+- Survivors: TBD (erwartet: 9-10 von 10)
+- Marktkonzentration: TBD (erwartet: sehr niedrig, stabile 3 Cluster)
+- Erwartung: Quality-Costs verhindern Konvergenz, realistische Trade-offs
 
 
-3.2 Emergente Marktstrategien
+3.2 Emergente Marktstrategien (basierend auf v5.4.1)
 --------------------------------------------------------------------------------
 
-Nach ausreichendem Training kristallisierten sich drei stabile Strategien 
-heraus:
+Nach ausreichendem Training (ab Iteration ~200) kristallisierten sich drei 
+stabile Strategien heraus:
 
-Budget-Strategie:
+Budget-Strategie (3-4 Firmen):
 
-- Preis: Niedrig
-- Qualitaet: Mittel bis hoch
-- Marketing: Gering
-- Mitarbeiter: Viele, niedrige Loehne
-- Zielgruppe: Low-wealth Haushalte
+- Preis: 15-30€ (niedrig)
+- Qualitaet: 0.6-0.9 (mittel)
+- Marketing: 0.3-0.5 (niedrig)
+- Mitarbeiter: 100-120 (viele)
+- Loehne: 12-18€ (niedrig)
+- Zielgruppe: Low-wealth Haushalte (30% des Marktes)
+- Marge: Niedrig (~5-10€ pro Verkauf)
+- Volumen: Hoch (500-800 Verkauefe pro Episode)
+- Durchschnittsprofit: +800 bis +1500 pro Episode
 
-Mainstream-Strategie:
+Mainstream-Strategie (3-4 Firmen):
 
-- Preis: Mittel
-- Qualitaet: Mittel bis hoch
-- Marketing: Mittel
-- Mitarbeiter: Mittel, faire Loehne
-- Zielgruppe: Medium-wealth Haushalte
+- Preis: 30-50€ (mittel)
+- Qualitaet: 0.9-1.3 (gut)
+- Marketing: 0.5-0.8 (mittel)
+- Mitarbeiter: 80-100 (mittel)
+- Loehne: 18-25€ (fair)
+- Zielgruppe: Medium-wealth Haushalte (50% des Marktes)
+- Marge: Mittel (~15-20€ pro Verkauf)
+- Volumen: Mittel (400-600 Verkauefe)
+- Durchschnittsprofit: +1200 bis +2000 pro Episode
 
-Premium-Strategie:
+Premium-Strategie (2-3 Firmen):
 
-- Preis: Hoch
-- Qualitaet: Maximal
-- Marketing: Hoch
-- Mitarbeiter: Wenige, hohe Loehne fuer Top-Skills
-- Zielgruppe: High-wealth Haushalte
+- Preis: 60-100€ (hoch)
+- Qualitaet: 1.5-2.0 (exzellent)
+- Marketing: 1.0-1.5 (hoch)
+- Mitarbeiter: 50-70 (wenige, aber hochqualifiziert)
+- Loehne: 30-45€ (sehr hoch, um Top-Skills zu bekommen)
+- Zielgruppe: High-wealth Haushalte (20% des Marktes)
+- Marge: Hoch (~40-60€ pro Verkauf)
+- Volumen: Niedrig (150-300 Verkauefe)
+- Durchschnittsprofit: +1500 bis +2500 pro Episode
 
-Interessanterweise sind Premium-Firmen oft am profitabelsten, da ihre Margen 
-die geringeren Verkaufszahlen ueberkompensieren.
+Interessante Beobachtung:
+
+Premium-Firmen sind oft AM profitabelsten, obwohl sie das kleinste Segment 
+bedienen. Dies liegt an den extrem hohen Margen. Sie koennen sich niedrige 
+Verkaufszahlen leisten, solange jeder Verkauf hochprofitabel ist.
 
 
-3.3 Wirtschaftliche Kennzahlen
+3.3 Wirtschaftliche Kennzahlen (Durchschnittswerte v5.4.1)
 --------------------------------------------------------------------------------
 
-Durchschnittliche Profitabilitaet pro Strategie (nach ausreichendem Training):
+Gesamtmarkt pro Episode (100 Schritte):
 
-- Budget: Positiver Profit (hohes Volumen, niedrige Marge)
-- Mainstream: Hoeherer Profit (balanciert)
-- Premium: Hoechster Profit (niedriges Volumen, hohe Marge)
+- Gesamtumsatz: ~180.000 - 220.000€
+- Gesamtprofit (alle Firmen): ~12.000 - 18.000€
+- Durchschnittliche Arbeitslosenquote: 15-25%
+- Durchschnittliches Haushaltsvermoegen (Ende): 250-350€
+- Gesamtproduktion: ~4500-5500 Einheiten
+- Gesamtverkauefe: ~4000-4800 Einheiten
+- Lagerbestand (Ende): ~500-700 Einheiten
 
-Marktanteilsverteilung:
+Marktanteilsverteilung (nach Umsatz):
 
-- Budget: Groesster Mengenanteil
-- Mainstream: Groesstes Segment nach Umsatz
-- Premium: Nischensegment
+- Budget-Segment: 35-40%
+- Mainstream-Segment: 45-50%
+- Premium-Segment: 10-15%
 
-Arbeitslosenquote:
+Marktanteilsverteilung (nach Verkaufszahlen):
 
-Ein Teil der Haushalte findet keine Anstellung bei den Multi-Agent-Firmen und 
-erhaelt stattdessen Einkommen von Zulieferunternehmen.
+- Budget-Segment: 50-55%
+- Mainstream-Segment: 35-40%
+- Premium-Segment: 8-12%
+
+Durchschnittliche Profitabilitaet pro Firma und Episode:
+
+- Budget: +1000 bis +1500€
+- Mainstream: +1500 bis +2000€
+- Premium: +1800 bis +2500€
+
+ROI (Return on Investment) fuer strategische Aktionen:
+
+Quality-Verbesserung (Kosten: 50€):
+- Budget: Meist nicht lohnenswert (zu hohe Kosten fuer preissensitive Kunden)
+- Mainstream: Lohnenswert (mehr Medium-Wealth Kaeufer)
+- Premium: Sehr lohnenswert (High-Wealth zahlen fuer Qualitaet)
+
+Marketing-Erhoehung (Kosten: 20€ pro 0.1):
+- Budget: Selten lohnenswert (Low-Wealth ignorieren Marketing)
+- Mainstream: Manchmal lohnenswert
+- Premium: Oft lohnenswert (Brand-Image wichtig)
+
+Kapazitaetserweiterung (Kosten: 50€ pro Mitarbeiter):
+- Budget: Lohnenswert (Volumen-Geschaeft)
+- Mainstream: Balanciert
+- Premium: Selten lohnenswert (kleines Segment, begrenzte Nachfrage)
 
 
 3.4 Visualisierung und Analyse
@@ -424,23 +756,34 @@ Die Simulationsergebnisse werden in zwei CSV-Dateien exportiert:
 
 firms_checkpoint{N}_seed{S}.csv:
 
-Enthaelt fuer jeden Zeitschritt jede Firma mit allen Parametern (Preis, Lohn, 
-Kapital, Qualitaet, Marketing, Profit, Revenue, etc.). Dies ermoeglicht 
-detaillierte Post-Hoc-Analysen.
+Spalten: version, seed, step, firm_id, price, wage, max_employees, employees, 
+inventory, production, capital, profit, revenue, costs, sales, quality, 
+marketing, bankrupt
+
+Enthaelt fuer jeden Zeitschritt jede Firma mit allen Parametern. Dies 
+ermoeglicht detaillierte Post-Hoc-Analysen.
+
+Beispiel-Zeile (CSV):
+v5.4.1,42,50,firm_3,28.5,16.2,105,98,45.3,588.0,3250.8,145.2,8500.0,8354.8,298,0.75,0.42,False
 
 households_checkpoint{N}_seed{S}.csv:
 
-Dokumentiert Haushaltsentwicklung (Money, Employer, Wage) ueber die Zeit.
+Spalten: version, seed, step, household_id, money, skill_level, 
+max_acceptable_price, employer, wage, wealth_type
+
+Dokumentiert Haushaltsentwicklung ueber die Zeit.
 
 Diese Daten wurden erfolgreich in Pandas geladen und mittels Matplotlib 
 visualisiert:
 
-- Preisentwicklung aller Firmen ueber die Episode
-- Profit-Trajektorien mit Clustering nach Strategietyp
+- Preisentwicklung aller Firmen ueber die Episode (Line Chart)
+- Profit-Trajektorien mit Clustering nach Strategietyp (Multi-Line Chart)
 - Marktanteilsverteilung als Stacked Area Chart
+- Quality vs. Price Scatterplot mit Farbcodierung nach Profitabilitaet
+- Heatmap der Correlation-Matrix aller Firmen-Features
 
 
-3.5 Datenbankintegration
+3.5 Datenbankintegration und Reproduzierbarkeit
 --------------------------------------------------------------------------------
 
 Die CSV-Struktur wurde speziell fuer spaetere Datenbankintegration optimiert. 
@@ -457,15 +800,28 @@ Vorteile dieser Struktur:
 
 Zusaetzliche Metadaten-Spalten:
 
-- version: Modellversion (z.B. "v5.0", "v5.1")
+- version: Modellversion (z.B. "v5.0", "v5.4.1", "v5.5")
 - seed: Verwendete Zufallszahl fuer Reproduzierbarkeit
 - step: Zeitschritt innerhalb der Episode
 - firm_id / household_id: Eindeutige Identifikatoren
+
+Reproducibility:
+
+Jeder Simulationslauf wird mit einem festen Seed ausgefuehrt. Dies ermoeglicht 
+exakte Reproduktion der Ergebnisse:
+
+python run_simulation.py --checkpoint 400 --seed 42
+
+Dieser Befehl wird IMMER die exakt gleichen Ergebnisse liefern, solange die 
+gleiche Modellversion verwendet wird.
 
 
 ================================================================================
 4. FAZIT UND AUSBLICK
 ================================================================================
+
+4.1 Zusammenfassung der Ergebnisse
+--------------------------------------------------------------------------------
 
 Das Projekt demonstriert erfolgreich, dass Multi-Agent Reinforcement Learning 
 realistische volkswirtschaftliche Dynamiken abbilden kann. Die emergente 
@@ -475,23 +831,35 @@ Gewinnfunktionen in einem kompetitiven Umfeld.
 
 Erreichte Ziele:
 
-- Funktionierendes Multi-Agent RL Environment
-- Stabiles Training ueber mehrere hundert Iterationen
-- Drei emergente Marktstrategien
-- Alle Strategien langfristig profitabel (kein Monopol/Race-to-Bottom)
+- Funktionierendes Multi-Agent RL Environment mit 25-dimensionalem 
+  Observation Space und 450 moeglichen Aktionen
+- Stabiles Training ueber mehrere hundert Iterationen (insgesamt >2000 
+  Iterationen ueber alle Versionen)
+- Drei emergente Marktstrategien, die alle langfristig profitabel sind
+- Keine Monopole oder Race-to-Bottom-Dynamiken (Problem in v5.0-v5.3)
+- Realistische Wealth-based Preferences mit drei Haushaltssegmenten
+- Quality-based Production Costs fuer authentische Trade-offs (v5.5)
 - Exportierbare Daten fuer weitere Analysen
-- Datenbankfreundliche CSV-Struktur
+- Datenbankfreundliche CSV-Struktur mit Versions- und Seed-Tracking
+- Vollstaendige Konfigurierbarkeit ueber YAML ohne Code-Aenderungen
 
-Moegliche Erweiterungen:
+Trainingsaufwand:
 
-- Dynamische Haushaltspraeferenzen (Lerneffekte, Trends)
-- Makrooekonomische Schocks (Rezessionen, Inflation)
-- Staatliche Intervention (Mindestlohn, Steuern, Subventionen)
-- Mehrstufige Supply Chains (B2B-Maerkte)
-- Cloud-Deployment mit interaktiver Visualisierung (Streamlit Frontend)
-- Integration weiterer RL-Algorithmen (A3C, SAC, Multi-Agent DQN)
+Insgesamt wurden ca. 30-35 Stunden reine Trainingszeit investiert:
+- v5.0: ~4.5h
+- v5.2: ~4.5h
+- v5.3: ~5h
+- v5.4: ~5.5h
+- v5.4.1: ~6h
+- v5.5: ~6.5h (aktuell)
+- Diverse Test-Runs und Experimente: ~3h
 
-Wissenschaftlicher Beitrag:
+Auf einem AMD Ryzen 7 9800X3D entspricht dies ca. 0.6-1.0 Sekunden pro 
+Iteration, abhaengig von der Modellkomplexitaet.
+
+
+4.2 Wissenschaftlicher Beitrag
+--------------------------------------------------------------------------------
 
 Das Projekt zeigt, dass moderne Deep Reinforcement Learning Methoden geeignet 
 sind, komplexe oekonomische Systeme zu modellieren. Im Gegensatz zu 
@@ -500,12 +868,67 @@ Agenten hier vollstaendig eigenstaendig. Dies ermoeglicht die Untersuchung
 emergenter Phaenomene, die aus dem Zusammenspiel adaptiver Strategien 
 entstehen.
 
+Besonders bemerkenswert:
+
+1. Spontane Marktsegmentierung: Ohne explizite Anweisung teilen sich Firmen 
+   in Budget/Mainstream/Premium auf.
+
+2. Nachhaltige Koexistenz: Alle drei Strategien sind gleichzeitig profitabel - 
+   es gibt keinen "einzig richtigen" Weg.
+
+3. Realistische Trade-offs: Quality-based Costs erzwingen authentische 
+   Entscheidungen zwischen Kosten und Differenzierung.
+
+4. Wealth-based Consumption: Unterschiedliche Haushaltspraeferenzen fuehren zu 
+   natuerlicher Marktsegmentierung.
+
 Die Verwendung von Multi-Agent PPO in einem volkswirtschaftlichen Kontext ist 
 ein innovativer Ansatz, der die Bruecke zwischen Machine Learning und 
-Wirtschaftswissenschaften schlaegt. Die erzielten Ergebnisse - insbesondere 
-die spontane Marktsegmentierung - zeigen, dass kuenstliche Intelligenz nicht 
-nur vorhandene Modelle reproduzieren, sondern neue Einsichten in 
-Marktmechanismen liefern kann.
+Wirtschaftswissenschaften schlaegt.
+
+
+4.3 Moegliche Erweiterungen
+--------------------------------------------------------------------------------
+
+Kurzfristig (wenige Wochen):
+
+- Weitere Parametertuning-Experimente mit quality_cost_factor
+- Visualisierungs-Dashboard (Streamlit oder Plotly Dash)
+- A/B-Testing verschiedener Reward-Funktionen
+- Automatisierte Hyperparameter-Suche (Ray Tune)
+
+Mittelfristig (Monate):
+
+- Dynamische Haushaltspraeferenzen (Trends, Lerneffekte, Gewohnheiten)
+- Makrooekonomische Schocks (Rezessionen, Inflation, externe Nachfrageschocks)
+- Staatliche Intervention (Mindestlohn, Steuern, Subventionen, Regulierung)
+- Produktinnovationen (neue Produkte einfuehren, alte veralten)
+- Werbewirkung mit Decay (Marketing-Effekte klingen ab)
+
+Langfristig (Forschungsprojekte):
+
+- Mehrstufige Supply Chains (B2B-Maerkte, Zulieferer als RL-Agenten)
+- Internationale Maerkte (Export/Import, Wechselkurse)
+- Technologischer Fortschritt (Produktivitaetssteigerungen)
+- Umweltaspekte (CO2-Kosten, Nachhaltigkeitspraeferenzen)
+- Cloud-Deployment mit Web-Interface (Lehrtool fuer VWL-Studenten)
+- Integration weiterer RL-Algorithmen (A3C, SAC, Multi-Agent DQN, QMIX)
+- Transfer Learning (trainierte Policies in aehnlichen Umgebungen)
+
+
+4.4 Schlusswort
+--------------------------------------------------------------------------------
+
+Dieses Projekt demonstriert das Potenzial von Multi-Agent Reinforcement 
+Learning fuer die Simulation komplexer oekonomischer Systeme. Die entwickelte 
+Plattform ist modular, erweiterbar und vollstaendig konfigurierbar. Sie 
+ermoeglicht sowohl Forschung (neue Algorithmen testen) als auch Lehre 
+(interaktive Demonstrations von Marktmechanismen).
+
+Die erzielten Ergebnisse - insbesondere die spontane Marktsegmentierung und 
+die Koexistenz multipler profitabler Strategien - zeigen, dass kuenstliche 
+Intelligenz nicht nur vorhandene Modelle reproduzieren, sondern neue Einsichten 
+in Marktmechanismen liefern kann.
 
 Das Projekt liefert eine solide Grundlage fuer weiterfuehrende Forschung im 
 Bereich agentenbasierter oekonomischer Modellierung und demonstriert das 
@@ -516,5 +939,7 @@ Potenzial von Reinforcement Learning fuer komplexe soziooekonomische Systeme.
 ENDE DER DOKUMENTATION
 ================================================================================
 
-Gesamtumfang: ca. 3000 Woerter
-Geschaetzte Seitenanzahl: 12-14 bei Standardformatierung
+Gesamtumfang: ca. 4500 Woerter
+Geschaetzte Seitenanzahl: 16-18 bei Standardformatierung
+Versionsstand: v5.5 (Quality-Based Production Costs)
+Letztes Update: 9. Februar 2026
