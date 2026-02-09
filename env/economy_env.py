@@ -11,6 +11,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
     - SEQUENTIAL PURCHASING - realistic market-clearing mechanism
     - PRICE-SENSITIVE HOUSEHOLDS - each household has max acceptable price
     - WEALTH-BASED UTILITY PREFERENCES - rich prefer quality, poor prefer price
+    - QUALITY-BASED PRODUCTION COSTS - premium quality = higher costs (NEW!)
     - Random household order each step (fair competition)
     - Household skill levels and job matching
     - Firm bankruptcy mechanism with severe penalties
@@ -460,8 +461,16 @@ class SimpleEconomyEnv(MultiAgentEnv):
             # Revenue from sales
             revenue = total_sales.get(agent_id, 0.0) * firm['price']
             
-            # Costs
-            production_costs = firm['production'] * self.production_cost_per_unit
+            # NEW: QUALITY-BASED PRODUCTION COSTS
+            # Higher quality = higher production costs
+            # Formula: base_cost × (0.5 + quality × 0.75)
+            # Quality 0.1 → multiplier 0.575 (cheap)
+            # Quality 1.0 → multiplier 1.25  (normal)
+            # Quality 2.0 → multiplier 2.0   (expensive)
+            quality_cost_multiplier = 0.5 + (firm['quality'] * 0.75)
+            production_costs = firm['production'] * self.production_cost_per_unit * quality_cost_multiplier
+            
+            # Other costs remain unchanged
             storage_costs = firm['inventory'] * self.storage_cost_per_unit
             fixed_costs = self.fixed_costs
             
