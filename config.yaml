@@ -51,7 +51,7 @@ initial_ranges:
 # TRAINING CONFIGURATION
 
 training:
-  iterations: 200                
+  iterations: 160                
   checkpoint_frequency: 20       # Save checkpoint every N iterations
   
   # PPO Hyperparameters
@@ -104,17 +104,14 @@ economy:
   production:
     productivity_per_employee: 12.0      # Base units per employee
     cost_per_unit: 2.0                  # Variable production cost per unit
-    fixed_costs: 200.0                  # INCREASED from 100 (scaled for difficulty)
+    fixed_costs: 200.0                  
     storage_cost_per_unit: 5          # Storage cost per unit
-    productivity_per_employee: 6.0      # Base units per employee
-    cost_per_unit: 2.0                  # Base production cost per unit
     quality_cost_factor: 0.5            # NEW! How much quality affects costs (0.0-1.0)
                                         # Formula: cost = base × (1 + quality × factor)
                                         # 0.0 = no quality impact (old behavior)
                                         # 0.5 = moderate (quality 2.0 → 2x costs)
                                         # 1.0 = strong (quality 2.0 → 3x costs)
-    fixed_costs: 150.0                  # INCREASED from 100 (scaled for difficulty)
-    storage_cost_per_unit: 0.2          # Storage cost per unit
+
   
   # Investment costs
   investment_costs:
