@@ -1,38 +1,35 @@
-# VWL Simulation Configuration - Sequential Purchasing Edition
-# Version: Income-based preferences for market diversity
 
-# ============================================================================
 # ENVIRONMENT CONFIGURATION
-# ============================================================================
+
 environment:
   n_firms: 10                    # Number of competing firms
   n_households: 3000             # Number of households (INCREASED for larger market)
-  max_steps: 100                 # Steps per episode
+  max_steps: 365                 # Steps per episode
 
-# ============================================================================
+
 # INITIAL VALUE RANGES (at episode start)
-# ============================================================================
+
 initial_ranges:
   # Firm starting values
   firms:
     price:
-      min: 25.0                  # Minimum initial price
+      min: 15.0                  # Minimum initial price
       max: 35.0                  # Maximum initial price
     wage:
       min: 15.0                  # Minimum initial wage
-      max: 25.0                  # Maximum initial wage
+      max: 35.0                  # Maximum initial wage
     max_employees:
-      min: 80                    # REDUCED from 150 (smaller firms)
-      max: 120                   # REDUCED from 250 (prevent monopolies)
+      min: 50                    
+      max: 120                   
     capital:
       min: 5000.0                # Minimum starting capital
       max: 10000.0               # Maximum starting capital
     quality:
-      min: 0.65                  # NARROWED from 0.6 (fairer start)
-      max: 0.75                  # NARROWED from 0.8 (fairer start)
+      min: 0.25                  
+      max: 0.75                  
     marketing:
-      min: 0.45                  # NARROWED from 0.4 (fairer start)
-      max: 0.55                  # NARROWED from 0.6 (fairer start)
+      min: 0.15                  
+      max: 0.60                  
   
   # Household starting values
   households:
@@ -40,22 +37,22 @@ initial_ranges:
       min: 100.0                 # Minimum starting money
       max: 200.0                 # Maximum starting money
     skill_level:
-      min: 0.3                   # Minimum skill (low qualified)
+      min: 0.2                   # Minimum skill (low qualified)
       max: 1.0                   # Maximum skill (highly qualified)
-    max_acceptable_price:        # Price sensitivity per household
-      min: 10.0                  # Some HH only buy cheap goods
-      max: 100.0                 # Some HH accept premium prices
+    max_acceptable_price:        
+      min: 10.0                  
+      max: 100.0                 
     wealth_distribution:         # Probability distribution
       low: 0.3                   # 30% low wealth households
       medium: 0.5                # 50% medium wealth households
       high: 0.2                  # 20% high wealth households
 
-# ============================================================================
+
 # TRAINING CONFIGURATION
-# ============================================================================
+
 training:
-  iterations: 200                # INCREASED from 150 (more training needed)
-  checkpoint_frequency: 10       # Save checkpoint every N iterations
+  iterations: 200                
+  checkpoint_frequency: 20       # Save checkpoint every N iterations
   
   # PPO Hyperparameters
   ppo:
@@ -73,9 +70,9 @@ training:
     num_env_runners: 4           # Parallel workers
     num_gpus: 0                  # GPUs for training (0 = CPU only)
 
-# ============================================================================
+
 # ECONOMIC PARAMETERS - SEQUENTIAL PURCHASING
-# ============================================================================
+
 economy:
   # Extended Action Space (5 actions per firm):
   # 1. Price adjustment: -10%, -5%, 0%, +5%, +10% (5 options)
@@ -87,50 +84,49 @@ economy:
   # Bounds (focused action space)
   price_bounds:
     min: 10.0                    # Minimum allowed price
-    max: 100.0                   # Maximum allowed price
+    max: 1000.0                   # Maximum allowed price
   wage_bounds:
     min: 10.0                    # Minimum allowed wage
-    max: 50.0                    # Maximum allowed wage
+    max: 500.0                    # Maximum allowed wage
   
   # Quality & Marketing bounds (INCREASED - no artificial caps!)
   quality_bounds:
     min: 0.1                     # Minimum quality
-    max: 2.0                     # INCREASED from 1.0 (allow premium quality!)
+    max: 6.0                     
   marketing_bounds:
     min: 0.1                     # Minimum marketing
-    max: 2.0                     # INCREASED from 1.0 (allow premium marketing!)
+    max: 6.0                     
   
   # Capacity hard cap (prevent runaway expansion)
-  max_employees_hard_cap: 150    # Absolute maximum employees per firm
+  max_employees_hard_cap: 250    # Absolute maximum employees per firm
   
   # Production parameters
   production:
-    productivity_per_employee: 6.0      # Base units per employee
+    productivity_per_employee: 12.0      # Base units per employee
     cost_per_unit: 2.0                  # Variable production cost per unit
-    fixed_costs: 150.0                  # INCREASED from 100 (scaled for difficulty)
-    storage_cost_per_unit: 0.2          # Storage cost per unit
+    fixed_costs: 200.0                  # INCREASED from 100 (scaled for difficulty)
+    storage_cost_per_unit: 5          # Storage cost per unit
   
   # Investment costs
   investment_costs:
-    marketing_per_level: 20.0           # Cost to increase marketing by 0.1
-    quality_improvement: 50.0           # INCREASED from 30 (premium quality is expensive!)
-    capacity_expansion: 50.0            # Cost to add 1 employee slot
+    marketing_per_level: 100.0           # Cost to increase marketing by 0.1
+    quality_improvement: 200.0           # Cost to improve quality by 0.1
+    capacity_expansion: 500.0            # Cost to add 1 employee slot
   
   # Bankruptcy
   bankruptcy:
     threshold: -2000.0                  # Bankruptcy threshold
-    penalty_reward: -50000.0            # MASSIVELY INCREASED from -20 (critical penalty!)
+    penalty_reward: -5000.0             # Large negative reward for going bankrupt
   
   # Household behavior (BASE weights - modified by wealth type!)
   households:
-    consumption_rate: 0.7               # % of money spent per step
+    consumption_rate: 0.4               # % of money spent per step
     
     # BASE utility weights (modified per wealth type below)
     utility_quality_weight: 0.5         # Base weight of quality in utility
     utility_marketing_weight: 0.3       # Base weight of marketing in utility
     utility_price_weight: 1.0           # Base weight of price in utility
     
-    # WEALTH-BASED UTILITY MODIFIERS (NEW!)
     # These multiply the base weights based on household wealth type
     wealth_utility_modifiers:
       low:
@@ -157,57 +153,13 @@ economy:
     base_multiplier: 0.5                # Minimum productivity multiplier
     skill_factor: 0.5                   # Additional multiplier from skills
   
-  # Reward parameters (REBALANCED)
+  # Reward parameters
   reward:
-    scale: 1000.0                       # INCREASED from 100 (profit less influential)
+    scale: 1000.0                       
     capital_bonus_divisor: 1000.0       # Capital bonus divisor
     capital_bonus_max: 5.0              # Maximum capital bonus
     market_share_bonus: 10.0            # Market share reward
     inventory_penalty: 2.0              # Excess inventory penalty
     exploration_penalty: 5.0            # Zero revenue penalty
-    # NEW: Survivor diversity incentive
     survivor_diversity_threshold: 5     # Penalty if fewer survivors
     survivor_diversity_penalty: 10000   # Penalty per missing survivor
-
-# ============================================================================
-# INCOME-BASED UTILITY PREFERENCES
-# ============================================================================
-# UTILITY CALCULATION (per wealth type):
-#
-# LOW-WEALTH HOUSEHOLDS (30% - Budget Segment):
-#   Utility = (quality × 0.3 + marketing × 0.21) / (price × 1.5)
-#   → Very price sensitive! Cheap products win
-#   → Will buy from 15-35€ firms with decent quality
-#
-# MEDIUM-WEALTH HOUSEHOLDS (50% - Mainstream):
-#   Utility = (quality × 0.5 + marketing × 0.3) / (price × 1.0)
-#   → Balanced: Good value for money
-#   → Will buy from 25-60€ firms with good quality/marketing mix
-#
-# HIGH-WEALTH HOUSEHOLDS (20% - Premium Segment):
-#   Utility = (quality × 0.9 + marketing × 0.45) / (price × 0.5)
-#   → Quality & brand focused! Price less important
-#   → Will buy from 50-100€ firms with high quality
-#
-# EXAMPLE:
-# Budget Firm: Price=20€, Quality=0.7, Marketing=0.5
-#   Low-wealth utility:  (0.7×0.3 + 0.5×0.21) / (20×1.5) = 0.0105  ← HIGH
-#   High-wealth utility: (0.7×0.9 + 0.5×0.45) / (20×0.5) = 0.0855  ← VERY HIGH
-#
-# Premium Firm: Price=70€, Quality=1.8, Marketing=1.5
-#   Low-wealth utility:  (1.8×0.3 + 1.5×0.21) / (70×1.5) = 0.0081  ← LOW
-#   High-wealth utility: (1.8×0.9 + 1.5×0.45) / (70×0.5) = 0.0656  ← HIGH
-#
-# NATURAL MARKET SEGMENTATION:
-# - Budget firms (15-35€): Target low & medium wealth (80% of market)
-# - Premium firms (50-100€): Target high wealth (20% of market)
-# - Both strategies can be profitable!
-# - No "race to the bottom" - quality matters for rich customers!
-#
-# EXPECTED OUTCOMES:
-# - 3-4 budget firms (low price, medium quality)
-# - 3-4 mainstream firms (medium price, good quality)
-# - 2-3 premium firms (high price, high quality)
-# - ALL profitable in their segments! ✅
-#
-# Challenge Rating: ⭐⭐⭐⭐⭐ (Realistic market dynamics)
