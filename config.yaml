@@ -106,6 +106,15 @@ economy:
     cost_per_unit: 2.0                  # Variable production cost per unit
     fixed_costs: 200.0                  # INCREASED from 100 (scaled for difficulty)
     storage_cost_per_unit: 5          # Storage cost per unit
+    productivity_per_employee: 6.0      # Base units per employee
+    cost_per_unit: 2.0                  # Base production cost per unit
+    quality_cost_factor: 0.5            # NEW! How much quality affects costs (0.0-1.0)
+                                        # Formula: cost = base × (1 + quality × factor)
+                                        # 0.0 = no quality impact (old behavior)
+                                        # 0.5 = moderate (quality 2.0 → 2x costs)
+                                        # 1.0 = strong (quality 2.0 → 3x costs)
+    fixed_costs: 150.0                  # INCREASED from 100 (scaled for difficulty)
+    storage_cost_per_unit: 0.2          # Storage cost per unit
   
   # Investment costs
   investment_costs:
@@ -163,3 +172,46 @@ economy:
     exploration_penalty: 5.0            # Zero revenue penalty
     survivor_diversity_threshold: 5     # Penalty if fewer survivors
     survivor_diversity_penalty: 10000   # Penalty per missing survivor
+
+# ============================================================================
+# INCOME-BASED UTILITY PREFERENCES
+# ============================================================================
+# UTILITY CALCULATION (per wealth type):
+#
+# LOW-WEALTH HOUSEHOLDS (30% - Budget Segment):
+#   Utility = (quality × 0.3 + marketing × 0.21) / (price × 1.5)
+#   → Very price sensitive! Cheap products win
+#   → Will buy from 15-35€ firms with decent quality
+#
+# MEDIUM-WEALTH HOUSEHOLDS (50% - Mainstream):
+#   Utility = (quality × 0.5 + marketing × 0.3) / (price × 1.0)
+#   → Balanced: Good value for money
+#   → Will buy from 25-60€ firms with good quality/marketing mix
+#
+# HIGH-WEALTH HOUSEHOLDS (20% - Premium Segment):
+#   Utility = (quality × 0.9 + marketing × 0.45) / (price × 0.5)
+#   → Quality & brand focused! Price less important
+#   → Will buy from 50-100€ firms with high quality
+#
+# EXAMPLE:
+# Budget Firm: Price=20€, Quality=0.7, Marketing=0.5
+#   Low-wealth utility:  (0.7×0.3 + 0.5×0.21) / (20×1.5) = 0.0105  ← HIGH
+#   High-wealth utility: (0.7×0.9 + 0.5×0.45) / (20×0.5) = 0.0855  ← VERY HIGH
+#
+# Premium Firm: Price=70€, Quality=1.8, Marketing=1.5
+#   Low-wealth utility:  (1.8×0.3 + 1.5×0.21) / (70×1.5) = 0.0081  ← LOW
+#   High-wealth utility: (1.8×0.9 + 1.5×0.45) / (70×0.5) = 0.0656  ← HIGH
+#
+# NATURAL MARKET SEGMENTATION:
+# - Budget firms (15-35€): Target low & medium wealth (80% of market)
+# - Premium firms (50-100€): Target high wealth (20% of market)
+# - Both strategies can be profitable!
+# - No "race to the bottom" - quality matters for rich customers!
+#
+# EXPECTED OUTCOMES:
+# - 3-4 budget firms (low price, medium quality)
+# - 3-4 mainstream firms (medium price, good quality)
+# - 2-3 premium firms (high price, high quality)
+# - ALL profitable in their segments! ✅
+#
+# Challenge Rating: ⭐⭐⭐⭐⭐ (Realistic market dynamics)

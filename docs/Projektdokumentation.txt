@@ -1,0 +1,520 @@
+================================================================================
+VOLKSWIRTSCHAFTLICHE SIMULATION MIT MULTI-AGENT REINFORCEMENT LEARNING
+================================================================================
+
+Projektdokumentation
+VWL-Simulation-RL
+Modul: Fortgeschrittene KI-Anwendungen
+Duale Hochschule Schleswig-Holstein (DHSH)
+Februar 2026
+
+================================================================================
+
+
+1. RELEVANZ DES THEMAS (10%)
+================================================================================
+
+1.1 Motivation und Problemstellung
+--------------------------------------------------------------------------------
+
+Die Simulation volkswirtschaftlicher Prozesse stellt seit jeher eine zentrale 
+Herausforderung in den Wirtschaftswissenschaften dar. Traditionelle Modelle 
+basieren haeufig auf vereinfachenden Annahmen rationaler Akteure und 
+Marktgleichgewichte, die der Komplexitaet realer Maerkte nur bedingt gerecht 
+werden. Moderne Reinforcement Learning (RL) Ansaetze bieten hier neue 
+Moeglichkeiten: Statt vordefinierte Verhaltensregeln zu implementieren, lernen 
+kuenstliche Agenten eigenstaendig optimale Strategien durch Interaktion mit 
+ihrer Umgebung.
+
+Das vorliegende Projekt entwickelt eine Multi-Agent Reinforcement Learning 
+Simulation, in der mehrere Unternehmen als eigenstaendige RL-Agenten agieren 
+und in einem kompetitiven Marktumfeld lernen, Preise, Loehne und Investitionen 
+zu optimieren. Dabei entstehen emergente Marktdynamiken, die aus dem 
+Zusammenspiel der individuellen Strategien resultieren - aehnlich wie in 
+realen Volkswirtschaften.
+
+
+1.2 Anwendungspotenzial
+--------------------------------------------------------------------------------
+
+Die Simulation ermoeglicht die Untersuchung wirtschaftspolitischer 
+Fragestellungen in einer kontrollierten Umgebung:
+
+- Policy-Evaluation: Wie reagieren Maerkte auf Mindestloehne, Steuern oder 
+  Foerderungen?
+- Marktmechanismen: Unter welchen Bedingungen entstehen Monopole oder 
+  Preiskaempfe?
+- Strategieentwicklung: Welche Geschaeftsmodelle sind langfristig erfolgreich?
+- Ausbildung: Interaktive Lernumgebung fuer volkswirtschaftliche Konzepte
+
+Im Gegensatz zu rein analytischen Modellen koennen hier auch irrationale oder 
+adaptive Verhaltensweisen abgebildet werden, die naeher an realen 
+Marktteilnehmern liegen.
+
+
+================================================================================
+2. ERLAEUTERUNG DES VORGEHENS (60-70%)
+================================================================================
+
+2.1 Systemdesign und Architektur
+--------------------------------------------------------------------------------
+
+2.1.1 Multi-Agent Environment
+--------------------------------------------------------------------------------
+
+Die Simulation basiert auf einer Multi-Agent Umgebung, in der mehrere 
+Unternehmen (Firms) als Reinforcement Learning Agenten agieren und mit einer 
+grossen Anzahl von Haushalten (Households) interagieren. Das Environment folgt 
+dem Gymnasium-Standard und nutzt die RLlib MultiAgentEnv-Schnittstelle, um 
+paralleles Training mehrerer Agenten zu ermoeglichen.
+
+Zentrale Komponenten:
+
+- Firms (RL-Agenten): Treffen strategische Entscheidungen ueber Preis, Lohn, 
+  Marketing, Qualitaet und Kapazitaet
+- Households (regelbasiert): Konsumenten mit unterschiedlichen Praeferenzen 
+  und Qualifikationen
+- Market Mechanism: Sequentielle Marktabwicklung mit realistischen 
+  Matching-Algorithmen
+- State Tracking: Vollstaendige Historie aller oekonomischen Kennzahlen pro 
+  Zeitschritt
+
+
+2.1.2 Marktmechanismus
+--------------------------------------------------------------------------------
+
+Die Simulation durchlaeuft pro Zeitschritt sechs aufeinanderfolgende Phasen:
+
+Phase 0 - Bankruptcy Check: 
+Unternehmen mit Kapital unter einem definierten Schwellenwert werden als 
+bankrott markiert und nehmen nicht mehr am Markt teil.
+
+Phase 1 - Strategische Aktionen: 
+Jedes Unternehmen passt seine Parameter an (Preis, Lohn, Marketing-Budget, 
+Qualitaetsinvestitionen, Kapazitaetserweiterung).
+
+Phase 2 - Arbeitsmarkt: 
+Skill-basiertes Matching zwischen Haushalten und Unternehmen. Hochqualifizierte 
+Arbeitnehmer werden bevorzugt von Unternehmen mit hohen Loehnen eingestellt. 
+Arbeitslose erhalten Einkommen von fiktiven Zulieferunternehmen (Suppliers), 
+um kontinuierliche Kaufkraft im System zu gewaehrleisten.
+
+Phase 3 - Produktion: 
+Die Produktionsmenge ergibt sich aus der Anzahl der Mitarbeiter multipliziert 
+mit deren durchschnittlichem Skill-Level. Dies bildet den positiven Effekt 
+qualifizierter Arbeitskraefte auf die Produktivitaet ab.
+
+Phase 4 - Guetermarkt: 
+Haushalte kaufen sequentiell bei Unternehmen mit dem besten 
+Preis-Leistungs-Verhaeltnis. Die Kaufentscheidung basiert auf einer 
+Utility-Funktion, die Preis, Qualitaet und Marketing beruecksichtigt. 
+Unterschiedliche Haushaltstypen gewichten diese Faktoren unterschiedlich.
+
+Phase 5 - Buchhaltung: 
+Berechnung von Umsatz, Kosten (Produktion, Lagerung, Fixkosten) und Gewinn. 
+Aktualisierung des Kapitals und Pruefung auf Bankrott.
+
+
+2.2 Technische Implementierung
+--------------------------------------------------------------------------------
+
+2.2.1 Reinforcement Learning Algorithmus: Proximal Policy Optimization (PPO)
+--------------------------------------------------------------------------------
+
+Als Lernalgorithmus kommt Proximal Policy Optimization zum Einsatz - ein 
+moderner Policy-Gradient-Algorithmus, der sich besonders fuer Multi-Agent 
+Szenarien eignet.
+
+Vorteile von PPO:
+
+- Sample-Efficiency: Lernt schneller als aeltere Algorithmen wie REINFORCE
+- Stabilitaet: Clipping-Mechanismus verhindert zu grosse Policy-Updates
+- Skalierbarkeit: Parallelisierung ueber mehrere Workers moeglich
+- Multi-Agent faehig: Simultanes Training mehrerer Policies
+
+Zentrale Hyperparameter:
+
+- Learning Rate: 0.0003
+- Gamma (Discount-Faktor): 0.99
+- Lambda (GAE-Parameter): 0.95
+- Clip Parameter: 0.2
+- Num Workers: 4 (parallele Rollout-Workers)
+
+
+2.2.2 Verwendete Bibliotheken
+--------------------------------------------------------------------------------
+
+Ray RLlib (v2.10.0)
+Hochskalierbare Reinforcement Learning Bibliothek mit Unterstuetzung fuer 
+verteiltes Training. Implementiert PPO, DDPG, SAC und weitere State-of-the-Art 
+Algorithmen. Ermoeglicht Training auf CPUs, GPUs und Cloud-Clustern.
+
+Gymnasium (v0.29.1)
+Nachfolger von OpenAI Gym - Standardschnittstelle fuer RL-Environments. 
+Definiert die API fuer reset(), step(), Observation Spaces und Action Spaces.
+
+NumPy (v1.26.4)
+Numerische Berechnungen fuer Produktionsmengen, Marktstatistiken und 
+Utility-Funktionen. Vektoroperationen beschleunigen die Simulation.
+
+PyYAML
+Konfigurationsmanagement - alle Simulationsparameter (Firmenanzahl, Haushalte, 
+Kosten, Praeferenzen) werden zentral in config.yaml verwaltet.
+
+Pandas
+Datenexport und -analyse. Simulationsergebnisse werden in CSV-Dateien 
+(Long-Format) exportiert fuer spaetere Datenbankintegration.
+
+
+2.2.3 Action Space und Observation Space
+--------------------------------------------------------------------------------
+
+Action Space (MultiDiscrete[5, 5, 3, 2, 3])
+
+Jedes Unternehmen waehlt fuenf diskrete Aktionen:
+
+1. Preisanpassung (5 Stufen): -10%, -5%, 0%, +5%, +10%
+2. Lohnanpassung (5 Stufen): -10%, -5%, 0%, +5%, +10%
+3. Marketing (3 Stufen): Senken, Halten, Erhoehen (mit Kosten)
+4. Qualitaet (2 Stufen): Nicht verbessern, Verbessern (mit Kosten)
+5. Kapazitaet (3 Stufen): -1 Mitarbeiter, Halten, +1 Mitarbeiter (mit Kosten)
+
+Dies ergibt 450 moegliche Aktionskombinationen pro Zeitschritt.
+
+Observation Space (25 Features)
+
+Jeder Agent erhaelt einen Vektor mit 25 normalisierten Werten:
+
+- Eigener Zustand (7 Features): 
+  Preis, Lohn, Mitarbeiter, Lager, Kapital, Qualitaet, Marketing
+  
+- Marktstatistiken (6 Features): 
+  Durchschnitts-/Min-/Max-Werte fuer Preise und Loehne
+  
+- Aggregate (4 Features): 
+  Gesamtbeschaeftigung, Arbeitslosenquote, durchschnittliches 
+  Haushaltvermoegen, durchschnittliches Skill-Level
+  
+- Meta-Informationen (3 Features): 
+  Letzter Profit, Anzahl ueberlebender Konkurrenten, Episodenfortschritt
+  
+- Strategische Insights (5 Features): 
+  Marktanteil, Sales-Trend, Lager-Effizienz, Preis-Wettbewerbsfaehigkeit, 
+  Lohn-Wettbewerbsfaehigkeit
+
+
+2.3 Entwicklungsverlauf (chronologisch)
+--------------------------------------------------------------------------------
+
+2.3.1 Setup-Phase (21. Januar 2026)
+--------------------------------------------------------------------------------
+
+Herausforderungen bei der Einrichtung:
+
+Die initiale Installation von Ray/RLlib erwies sich als komplex aufgrund von 
+Dependency-Konflikten. Python 3.13 war noch nicht kompatibel, PyArrow-Builds 
+schlugen auf Windows fehl. Die Loesung erforderte Python 3.11, manuelle 
+Installation vorkompilierter Wheels und Konfiguration der Visual Studio Build 
+Tools.
+
+Erste Environment-Implementierung:
+
+Urspruenglich wurde PettingZoo's AEC-API verwendet, was jedoch zu 
+API-Inkompatibilitaeten mit RLlib 2.x fuehrte. Der Wechsel zu einem direkten 
+Gymnasium MultiAgentEnv erwies sich als deutlich stabiler.
+
+
+2.3.2 v5.0 Major Release (3. Februar 2026)
+--------------------------------------------------------------------------------
+
+Config-basiertes System:
+
+Umstellung von CLI-Parametern auf zentrale config.yaml. Alle 
+Trainingsparameter (Firmenanzahl, Haushalte, Lernrate, Episode-Laenge) werden 
+nun aus der Konfigurationsdatei geladen. Das --resume Flag ermoeglicht 
+Fortsetzen des Trainings ab dem letzten Checkpoint.
+
+Bankruptcy-Mechanismus:
+
+Einfuehrung eines Kapital-Systems mit Startkapital in einem definierten 
+Bereich. Unternehmen mit Kapital unter einem kritischen Schwellenwert gehen 
+bankrott und scheiden aus dem Markt aus. Dies zwingt Agenten, nachhaltige 
+Strategien zu entwickeln.
+
+Erweiterte Action Spaces:
+
+Erweiterung von urspruenglich 2 Aktionen (Preis, Lohn) auf 5 Aktionen 
+inklusive Marketing, Qualitaet und Kapazitaet. Dies erhoeht die strategische 
+Tiefe erheblich.
+
+Windows-Kompatibilitaet:
+
+UTF-8 Encoding-Fixes fuer config.yaml, Bereinigung der Konsolenausgaben, 
+Vermeidung von Ray-spezifischen Warnungen fuer fluessigeres 
+Trainingserlebnis.
+
+
+2.3.3 Balance & Feature-Tuning (5-8. Februar 2026)
+--------------------------------------------------------------------------------
+
+Wealth-based Utility System:
+
+Implementierung differenzierter Haushaltspraeferenzen. Haushalte werden in 
+drei Kategorien eingeteilt:
+
+- Low Wealth: Preissensitiv, bevorzugen guenstige Produkte
+- Medium Wealth: Balanced, achten auf Preis-Leistung
+- High Wealth: Qualitaetsorientiert, weniger preissensitiv
+
+Die Utility-Funktion wurde entsprechend angepasst:
+
+utility = (quality × quality_weight + marketing × marketing_weight) / 
+          (price × price_weight)
+
+Wobei die Gewichte je nach Wealth-Type variieren.
+
+Market Stratification:
+
+Durch die differenzierten Praeferenzen entstehen drei Marktsegmente:
+
+- Budget: Firmen mit niedrigen Preisen, hohem Volumen
+- Mainstream: Mittlere Preise, ausgewogenes Preis-Leistungs-Verhaeltnis
+- Premium: Hohe Preise, Fokus auf Qualitaet
+
+Dies verhindert den zuvor beobachteten "Race to the Bottom", bei dem alle 
+Firmen nur den Preis senkten.
+
+Sequential Purchasing:
+
+Haushalte kaufen nicht mehr simultan, sondern sequentiell in zufaelliger 
+Reihenfolge. Dies verhindert unrealistische Winner-takes-all-Szenarien und 
+fuehrt zu realistischeren Marktverteilungen.
+
+Survivor Diversity Penalty:
+
+Einfuehrung einer Strafe, wenn zu viele Unternehmen bankrottgehen. Dies 
+incentiviert Agenten, den Markt nicht zu zerstoeren, sondern nachhaltig zu 
+konkurrieren.
+
+
+2.4 Herausforderungen und Loesungen
+--------------------------------------------------------------------------------
+
+Problem: Negative Rewards trotz Training
+
+In fruehen Iterationen blieben die Rewards ueber viele Iterationen negativ. 
+Dies lag an unrealistischen Produktionskosten und zu geringer 
+Haushaltskaufkraft.
+
+Loesung:
+
+- Erhoehung der Konsumrate
+- Anpassung der Haushaltszahl
+- Reduzierung der Fixkosten
+- Implementierung von Arbeitslosengeld (Supplier-Wages) fuer konsistente 
+  Nachfrage
+
+Problem: Observation Space Explosion
+
+Mit zunehmender Unternehmensanzahl wuchs der Observation Space linear. Dies 
+fuehrte zu hochdimensionalen Vektoren, die das Lernen erschwerten.
+
+Loesung:
+
+Fokus auf Markt-Aggregate statt individueller Konkurrenten-Features. Jeder 
+Agent sieht nur eigene Werte plus Marktstatistiken (Min/Max/Mean), nicht die 
+individuellen Werte aller Konkurrenten.
+
+Problem: Windows-spezifische Encoding-Fehler
+
+config.yaml mit Unicode-Zeichen fuehrte zu UnicodeDecodeError auf Windows.
+
+Loesung:
+
+Explizites UTF-8 Encoding beim File-Oeffnen:
+open('config.yaml', 'r', encoding='utf-8')
+
+
+================================================================================
+3. VORSTELLUNG DER ERGEBNISSE (20-30%)
+================================================================================
+
+3.1 Trainingsmetriken
+--------------------------------------------------------------------------------
+
+Das Training wurde ueber mehrere hundert Iterationen mit parallelen Workers 
+durchgefuehrt. Jede Iteration umfasst mehrere Episoden mit jeweils mehreren 
+hundert Zeitschritten.
+
+Reward-Entwicklung:
+
+- Fruehe Iterationen: Stark negative Mean Rewards (alle Firmen bankrott)
+- Mittlere Phase: Graduelle Verbesserung (erste ueberlebende Firmen)
+- Spaete Phase: Positive Rewards (Mehrheit der Firmen profitabel)
+
+Episode Length:
+
+- Fruehe Iterationen: Vorzeitiges Ende durch Bankruptcies
+- Mittlere Phase: Zunehmende Episode-Laenge
+- Spaete Phase: Konsistent volle Episode-Laenge
+
+Dies zeigt deutliches Lernen: Firmen entwickeln Strategien, die langfristiges 
+Ueberleben ermoeglichen.
+
+
+3.2 Emergente Marktstrategien
+--------------------------------------------------------------------------------
+
+Nach ausreichendem Training kristallisierten sich drei stabile Strategien 
+heraus:
+
+Budget-Strategie:
+
+- Preis: Niedrig
+- Qualitaet: Mittel bis hoch
+- Marketing: Gering
+- Mitarbeiter: Viele, niedrige Loehne
+- Zielgruppe: Low-wealth Haushalte
+
+Mainstream-Strategie:
+
+- Preis: Mittel
+- Qualitaet: Mittel bis hoch
+- Marketing: Mittel
+- Mitarbeiter: Mittel, faire Loehne
+- Zielgruppe: Medium-wealth Haushalte
+
+Premium-Strategie:
+
+- Preis: Hoch
+- Qualitaet: Maximal
+- Marketing: Hoch
+- Mitarbeiter: Wenige, hohe Loehne fuer Top-Skills
+- Zielgruppe: High-wealth Haushalte
+
+Interessanterweise sind Premium-Firmen oft am profitabelsten, da ihre Margen 
+die geringeren Verkaufszahlen ueberkompensieren.
+
+
+3.3 Wirtschaftliche Kennzahlen
+--------------------------------------------------------------------------------
+
+Durchschnittliche Profitabilitaet pro Strategie (nach ausreichendem Training):
+
+- Budget: Positiver Profit (hohes Volumen, niedrige Marge)
+- Mainstream: Hoeherer Profit (balanciert)
+- Premium: Hoechster Profit (niedriges Volumen, hohe Marge)
+
+Marktanteilsverteilung:
+
+- Budget: Groesster Mengenanteil
+- Mainstream: Groesstes Segment nach Umsatz
+- Premium: Nischensegment
+
+Arbeitslosenquote:
+
+Ein Teil der Haushalte findet keine Anstellung bei den Multi-Agent-Firmen und 
+erhaelt stattdessen Einkommen von Zulieferunternehmen.
+
+
+3.4 Visualisierung und Analyse
+--------------------------------------------------------------------------------
+
+Die Simulationsergebnisse werden in zwei CSV-Dateien exportiert:
+
+firms_checkpoint{N}_seed{S}.csv:
+
+Enthaelt fuer jeden Zeitschritt jede Firma mit allen Parametern (Preis, Lohn, 
+Kapital, Qualitaet, Marketing, Profit, Revenue, etc.). Dies ermoeglicht 
+detaillierte Post-Hoc-Analysen.
+
+households_checkpoint{N}_seed{S}.csv:
+
+Dokumentiert Haushaltsentwicklung (Money, Employer, Wage) ueber die Zeit.
+
+Diese Daten wurden erfolgreich in Pandas geladen und mittels Matplotlib 
+visualisiert:
+
+- Preisentwicklung aller Firmen ueber die Episode
+- Profit-Trajektorien mit Clustering nach Strategietyp
+- Marktanteilsverteilung als Stacked Area Chart
+
+
+3.5 Datenbankintegration
+--------------------------------------------------------------------------------
+
+Die CSV-Struktur wurde speziell fuer spaetere Datenbankintegration optimiert. 
+Statt eines "breiten" Formats (eine Zeile pro Zeitschritt mit allen Entitaeten 
+als Spalten) wird ein "langes" Format verwendet (eine Zeile pro Entitaet pro 
+Zeitschritt).
+
+Vorteile dieser Struktur:
+
+- Einfache Datenbank-Importe: Normalisierte Tabellenstruktur
+- SQL-Abfragen: Ueber mehrere Simulationen hinweg
+- Vergleich verschiedener Modellversionen: Version-Tracking
+- Statistische Analysen: Ueber viele Simulationslaeufe
+
+Zusaetzliche Metadaten-Spalten:
+
+- version: Modellversion (z.B. "v5.0", "v5.1")
+- seed: Verwendete Zufallszahl fuer Reproduzierbarkeit
+- step: Zeitschritt innerhalb der Episode
+- firm_id / household_id: Eindeutige Identifikatoren
+
+
+================================================================================
+4. FAZIT UND AUSBLICK
+================================================================================
+
+Das Projekt demonstriert erfolgreich, dass Multi-Agent Reinforcement Learning 
+realistische volkswirtschaftliche Dynamiken abbilden kann. Die emergente 
+Marktsegmentierung in Budget-, Mainstream- und Premium-Anbieter entsteht ohne 
+explizite Programmierung - rein durch die Optimierung individueller 
+Gewinnfunktionen in einem kompetitiven Umfeld.
+
+Erreichte Ziele:
+
+- Funktionierendes Multi-Agent RL Environment
+- Stabiles Training ueber mehrere hundert Iterationen
+- Drei emergente Marktstrategien
+- Alle Strategien langfristig profitabel (kein Monopol/Race-to-Bottom)
+- Exportierbare Daten fuer weitere Analysen
+- Datenbankfreundliche CSV-Struktur
+
+Moegliche Erweiterungen:
+
+- Dynamische Haushaltspraeferenzen (Lerneffekte, Trends)
+- Makrooekonomische Schocks (Rezessionen, Inflation)
+- Staatliche Intervention (Mindestlohn, Steuern, Subventionen)
+- Mehrstufige Supply Chains (B2B-Maerkte)
+- Cloud-Deployment mit interaktiver Visualisierung (Streamlit Frontend)
+- Integration weiterer RL-Algorithmen (A3C, SAC, Multi-Agent DQN)
+
+Wissenschaftlicher Beitrag:
+
+Das Projekt zeigt, dass moderne Deep Reinforcement Learning Methoden geeignet 
+sind, komplexe oekonomische Systeme zu modellieren. Im Gegensatz zu 
+traditionellen agentenbasierten Modellen mit vordefinierten Regeln lernen die 
+Agenten hier vollstaendig eigenstaendig. Dies ermoeglicht die Untersuchung 
+emergenter Phaenomene, die aus dem Zusammenspiel adaptiver Strategien 
+entstehen.
+
+Die Verwendung von Multi-Agent PPO in einem volkswirtschaftlichen Kontext ist 
+ein innovativer Ansatz, der die Bruecke zwischen Machine Learning und 
+Wirtschaftswissenschaften schlaegt. Die erzielten Ergebnisse - insbesondere 
+die spontane Marktsegmentierung - zeigen, dass kuenstliche Intelligenz nicht 
+nur vorhandene Modelle reproduzieren, sondern neue Einsichten in 
+Marktmechanismen liefern kann.
+
+Das Projekt liefert eine solide Grundlage fuer weiterfuehrende Forschung im 
+Bereich agentenbasierter oekonomischer Modellierung und demonstriert das 
+Potenzial von Reinforcement Learning fuer komplexe soziooekonomische Systeme.
+
+
+================================================================================
+ENDE DER DOKUMENTATION
+================================================================================
+
+Gesamtumfang: ca. 3000 Woerter
+Geschaetzte Seitenanzahl: 12-14 bei Standardformatierung

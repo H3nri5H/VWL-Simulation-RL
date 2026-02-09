@@ -11,6 +11,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
     - SEQUENTIAL PURCHASING - realistic market-clearing mechanism
     - PRICE-SENSITIVE HOUSEHOLDS - each household has max acceptable price
     - WEALTH-BASED UTILITY PREFERENCES - rich prefer quality, poor prefer price
+    - QUALITY-BASED PRODUCTION COSTS - premium quality = higher costs (configurable!)
     - Random household order each step (fair competition)
     - Household skill levels and job matching
     - Firm bankruptcy mechanism with severe penalties
@@ -67,6 +68,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         prod_cfg = econ_cfg.get('production', {})
         self.productivity_base = prod_cfg.get('productivity_per_employee', 6.0)
         self.production_cost_per_unit = prod_cfg.get('cost_per_unit', 2.0)
+        self.quality_cost_factor = prod_cfg.get('quality_cost_factor', 0.5)  # NEW!
         self.fixed_costs = prod_cfg.get('fixed_costs', 30.0)
         self.storage_cost_per_unit = prod_cfg.get('storage_cost_per_unit', 0.2)
         
@@ -460,8 +462,13 @@ class SimpleEconomyEnv(MultiAgentEnv):
             # Revenue from sales
             revenue = total_sales.get(agent_id, 0.0) * firm['price']
             
-            # Costs
-            production_costs = firm['production'] * self.production_cost_per_unit
+            # CONFIGURABLE QUALITY-BASED PRODUCTION COSTS
+            # Formula: base_cost × (1 + quality × quality_cost_factor)
+            # Works with ANY quality range (0.1-2.0 or even 0.3-6.0!)
+            quality_cost_multiplier = 1.0 + (firm['quality'] * self.quality_cost_factor)
+            production_costs = firm['production'] * self.production_cost_per_unit * quality_cost_multiplier
+            
+            # Other costs remain unchanged
             storage_costs = firm['inventory'] * self.storage_cost_per_unit
             fixed_costs = self.fixed_costs
             
