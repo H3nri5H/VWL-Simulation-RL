@@ -11,7 +11,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
     - SEQUENTIAL PURCHASING - realistic market-clearing mechanism
     - PRICE-SENSITIVE HOUSEHOLDS - each household has max acceptable price
     - WEALTH-BASED UTILITY PREFERENCES - rich prefer quality, poor prefer price
-    - QUALITY-BASED PRODUCTION COSTS - premium quality = higher costs (NEW!)
+    - QUALITY-BASED PRODUCTION COSTS - premium quality = higher costs (configurable!)
     - Random household order each step (fair competition)
     - Household skill levels and job matching
     - Firm bankruptcy mechanism with severe penalties
@@ -68,6 +68,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         prod_cfg = econ_cfg.get('production', {})
         self.productivity_base = prod_cfg.get('productivity_per_employee', 6.0)
         self.production_cost_per_unit = prod_cfg.get('cost_per_unit', 2.0)
+        self.quality_cost_factor = prod_cfg.get('quality_cost_factor', 0.5)  # NEW!
         self.fixed_costs = prod_cfg.get('fixed_costs', 30.0)
         self.storage_cost_per_unit = prod_cfg.get('storage_cost_per_unit', 0.2)
         
@@ -461,13 +462,10 @@ class SimpleEconomyEnv(MultiAgentEnv):
             # Revenue from sales
             revenue = total_sales.get(agent_id, 0.0) * firm['price']
             
-            # NEW: QUALITY-BASED PRODUCTION COSTS
-            # Higher quality = higher production costs
-            # Formula: base_cost × (0.5 + quality × 0.75)
-            # Quality 0.1 → multiplier 0.575 (cheap)
-            # Quality 1.0 → multiplier 1.25  (normal)
-            # Quality 2.0 → multiplier 2.0   (expensive)
-            quality_cost_multiplier = 0.5 + (firm['quality'] * 0.75)
+            # CONFIGURABLE QUALITY-BASED PRODUCTION COSTS
+            # Formula: base_cost × (1 + quality × quality_cost_factor)
+            # Works with ANY quality range (0.1-2.0 or even 0.3-6.0!)
+            quality_cost_multiplier = 1.0 + (firm['quality'] * self.quality_cost_factor)
             production_costs = firm['production'] * self.production_cost_per_unit * quality_cost_multiplier
             
             # Other costs remain unchanged
