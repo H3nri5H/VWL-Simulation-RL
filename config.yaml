@@ -51,7 +51,7 @@ initial_ranges:
 # TRAINING CONFIGURATION
 
 training:
-  iterations: 160                
+  iterations: 100                
   checkpoint_frequency: 20       # Save checkpoint every N iterations
   
   # PPO Hyperparameters

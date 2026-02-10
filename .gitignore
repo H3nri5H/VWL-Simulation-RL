@@ -43,7 +43,6 @@ venv.bak/
 # Ray/RLlib
 ~/ray_results/
 ray_results/
-*.pkl
 
 # Jupyter
 .ipynb_checkpoints/
@@ -62,7 +61,7 @@ models/
 # Data
 data/
 *.csv
-*.json
+metrics/
 
 # Plots
 plots/

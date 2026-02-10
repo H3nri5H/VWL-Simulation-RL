@@ -1,0 +1,13 @@
+{
+  "iteration": 160,
+  "reward_mean": -7272922.435115006,
+  "episode_len_mean": 365.0,
+  "timestamp": 1770636342,
+  "is_favorite": false,
+  "checkpoint_path": "C:\\Uni\\Fortgeschrittene KI-Anwendungen\\checkpoints\\checkpoint_000160",
+  "env_config": {
+    "n_firms": 10,
+    "n_households": 3000,
+    "max_steps": 365
+  }
+}
