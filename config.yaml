@@ -106,11 +106,7 @@ economy:
     cost_per_unit: 2.0                  # Variable production cost per unit
     fixed_costs: 200.0                  
     storage_cost_per_unit: 5          # Storage cost per unit
-    quality_cost_factor: 0.5            # NEW! How much quality affects costs (0.0-1.0)
-                                        # Formula: cost = base × (1 + quality × factor)
-                                        # 0.0 = no quality impact (old behavior)
-                                        # 0.5 = moderate (quality 2.0 → 2x costs)
-                                        # 1.0 = strong (quality 2.0 → 3x costs)
+    quality_cost_factor: 0.5          
 
   
   # Investment costs
