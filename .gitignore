@@ -44,7 +44,6 @@ venv.bak/
 ~/ray_results/
 ray_results/
 *.pkl
-checkpoint_*/
 
 # Jupyter
 .ipynb_checkpoints/
