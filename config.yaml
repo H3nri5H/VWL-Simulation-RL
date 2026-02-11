@@ -13,45 +13,45 @@ initial_ranges:
   # Firm starting values
   firms:
     price:
-      min: 20.0                  # Minimum initial price
-      max: 80.0                  # Maximum initial price
+      min: 25.0                  # Minimum initial price
+      max: 65.0                  # Maximum initial price
     wage:
-      min: 15.0                  # Minimum initial wage
-      max: 50.0                  # Maximum initial wage
+      min: 18.0                  # Minimum initial wage
+      max: 45.0                  # Maximum initial wage
     max_employees:
-      min: 8                    
-      max: 20                   
+      min: 10                    
+      max: 25                   
     capital:
-      min: 50000.0                # Minimum starting capital
-      max: 100000.0               # Maximum starting capital
+      min: 80000.0                # Minimum starting capital
+      max: 120000.0               # Maximum starting capital
     quality:
-      min: 0.15                  
-      max: 0.50                  
+      min: 0.20                  
+      max: 0.45                  
     marketing:
-      min: 0.15                  
-      max: 0.60                  
+      min: 0.20                  
+      max: 0.50                  
   
   # Household starting values
   households:
     money:
-      min: 1000.0                 # Minimum starting money
-      max: 2000.0                 # Maximum starting money
+      min: 1200.0                 # Minimum starting money
+      max: 1800.0                 # Maximum starting money
     skill_level:
-      min: 0.2                   # Minimum skill (low qualified)
-      max: 1.0                   # Maximum skill (highly qualified)
+      min: 0.25                   # Minimum skill (low qualified)
+      max: 0.95                   # Maximum skill (highly qualified)
     max_acceptable_price:        
-      min: 1.0                  
-      max: 1000.0                 
-    wealth_distribution:         # Probability distribution
-      low: 0.3                   # 30% low wealth households
+      min: 10.0                  
+      max: 800.0                 
+    wealth_distribution:         # Probability distribution (ADJUSTED!)
+      low: 0.2                   # 20% low wealth households (was 30%)
       medium: 0.5                # 50% medium wealth households
-      high: 0.2                  # 20% high wealth households
+      high: 0.3                  # 30% high wealth households (was 20%)
 
 
 # TRAINING CONFIGURATION
 
 training:
-  iterations: 200                
+  iterations: 400                
   checkpoint_frequency: 20       # Save checkpoint every N iterations
   
   # PPO Hyperparameters
@@ -165,46 +165,36 @@ economy:
     exploration_penalty: 5.0            # Zero revenue penalty
     survivor_diversity_threshold: 5     # Penalty if fewer survivors
     survivor_diversity_penalty: 10000   # Penalty per missing survivor
+    
+    # NEW: Diversity & Saturation parameters
+    diversity_bonus_weight: 50.0        # Reward for unique strategies
+    saturation_penalty_base: 100.0      # Penalty for overcrowded segments
+    saturation_optimal_per_segment: 3   # Optimal firms per segment (Budget/Mainstream/Premium)
 
 # ============================================================================
 # INCOME-BASED UTILITY PREFERENCES
 # ============================================================================
 # UTILITY CALCULATION (per wealth type):
 #
-# LOW-WEALTH HOUSEHOLDS (30% - Budget Segment):
+# LOW-WEALTH HOUSEHOLDS (20% - Budget Segment) - REDUCED from 30%
 #   Utility = (quality × 0.3 + marketing × 0.21) / (price × 1.5)
 #   → Very price sensitive! Cheap products win
 #   → Will buy from 15-35€ firms with decent quality
 #
-# MEDIUM-WEALTH HOUSEHOLDS (50% - Mainstream):
+# MEDIUM-WEALTH HOUSEHOLDS (50% - Mainstream) - LARGEST SEGMENT
 #   Utility = (quality × 0.5 + marketing × 0.3) / (price × 1.0)
 #   → Balanced: Good value for money
 #   → Will buy from 25-60€ firms with good quality/marketing mix
 #
-# HIGH-WEALTH HOUSEHOLDS (20% - Premium Segment):
+# HIGH-WEALTH HOUSEHOLDS (30% - Premium Segment) - INCREASED from 20%
 #   Utility = (quality × 0.9 + marketing × 0.45) / (price × 0.5)
 #   → Quality & brand focused! Price less important
-#   → Will buy from 50-100€ firms with high quality
+#   → Will buy from 50-150€ firms with high quality
 #
-# EXAMPLE:
-# Budget Firm: Price=20€, Quality=0.7, Marketing=0.5
-#   Low-wealth utility:  (0.7×0.3 + 0.5×0.21) / (20×1.5) = 0.0105  ← HIGH
-#   High-wealth utility: (0.7×0.9 + 0.5×0.45) / (20×0.5) = 0.0855  ← VERY HIGH
+# EXPECTED MARKET DISTRIBUTION:
+# - Budget segment: 20% of market (600 households)
+# - Mainstream segment: 50% of market (1500 households) ← LARGEST
+# - Premium segment: 30% of market (900 households)
 #
-# Premium Firm: Price=70€, Quality=1.8, Marketing=1.5
-#   Low-wealth utility:  (1.8×0.3 + 1.5×0.21) / (70×1.5) = 0.0081  ← LOW
-#   High-wealth utility: (1.8×0.9 + 1.5×0.45) / (70×0.5) = 0.0656  ← HIGH
-#
-# NATURAL MARKET SEGMENTATION:
-# - Budget firms (15-35€): Target low & medium wealth (80% of market)
-# - Premium firms (50-100€): Target high wealth (20% of market)
-# - Both strategies can be profitable!
-# - No "race to the bottom" - quality matters for rich customers!
-#
-# EXPECTED OUTCOMES:
-# - 3-4 budget firms (low price, medium quality)
-# - 3-4 mainstream firms (medium price, good quality)
-# - 2-3 premium firms (high price, high quality)
-# - ALL profitable in their segments! ✅
-#
-# Challenge Rating: ⭐⭐⭐⭐⭐ (Realistic market dynamics)
+# This makes Premium MORE ATTRACTIVE than before!
+# No more race-to-bottom bias!

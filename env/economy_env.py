@@ -8,6 +8,9 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 class SimpleEconomyEnv(MultiAgentEnv):
     """
     Enhanced economy simulation with:
+    - INDIVIDUAL FIRM POLICIES - heterogeneous learning (no shared policy!)
+    - DIVERSITY BONUS - reward for unique strategies (prevents convergence)
+    - MARKET SATURATION PENALTY - penalize overcrowded segments
     - SEQUENTIAL PURCHASING - realistic market-clearing mechanism
     - PRICE-SENSITIVE HOUSEHOLDS - each household has max acceptable price
     - WEALTH-BASED UTILITY PREFERENCES - rich prefer quality, poor prefer price
@@ -23,6 +26,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
     - Enhanced observation space (25 features including market share, trends, competitiveness)
     - Balanced economic parameters for challenging but fair gameplay
     - ALL parameters loaded from config.yaml
+    - CLEAN FORMATTING: Integer quantities, 2-decimal currency
     """
     
     def __init__(self, config=None):
@@ -68,7 +72,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         prod_cfg = econ_cfg.get('production', {})
         self.productivity_base = prod_cfg.get('productivity_per_employee', 6.0)
         self.production_cost_per_unit = prod_cfg.get('cost_per_unit', 2.0)
-        self.quality_cost_factor = prod_cfg.get('quality_cost_factor', 0.5)  # NEW!
+        self.quality_cost_factor = prod_cfg.get('quality_cost_factor', 0.5)
         self.fixed_costs = prod_cfg.get('fixed_costs', 30.0)
         self.storage_cost_per_unit = prod_cfg.get('storage_cost_per_unit', 0.2)
         
@@ -78,10 +82,10 @@ class SimpleEconomyEnv(MultiAgentEnv):
         self.quality_improvement_cost = invest_cfg.get('quality_improvement', 30.0)
         self.capacity_expansion_cost = invest_cfg.get('capacity_expansion', 50.0)
         
-        # Capacity hard cap (NEW)
+        # Capacity hard cap
         self.max_employees_hard_cap = econ_cfg.get('max_employees_hard_cap', 150)
         
-        # Quality & Marketing bounds (NEW - load from config!)
+        # Quality & Marketing bounds
         quality_bounds = econ_cfg.get('quality_bounds', {'min': 0.1, 'max': 1.0})
         marketing_bounds = econ_cfg.get('marketing_bounds', {'min': 0.1, 'max': 1.0})
         self.quality_min = quality_bounds['min']
@@ -103,7 +107,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
         self.utility_quality_weight = hh_cfg.get('utility_quality_weight', 0.5)
         self.utility_marketing_weight = hh_cfg.get('utility_marketing_weight', 0.3)
         
-        # NEW: Wealth-based utility modifiers
+        # Wealth-based utility modifiers
         wealth_util_mods = hh_cfg.get('wealth_utility_modifiers', {})
         self.wealth_utility_modifiers = {
             'low': wealth_util_mods.get('low', {'price_weight': 1.0, 'quality_weight': 1.0, 'marketing_weight': 1.0}),
@@ -135,9 +139,14 @@ class SimpleEconomyEnv(MultiAgentEnv):
         self.inventory_penalty_weight = reward_cfg.get('inventory_penalty', 2.0)
         self.exploration_penalty = reward_cfg.get('exploration_penalty', 5.0)
         
-        # Survivor diversity parameters (NEW)
+        # Survivor diversity parameters
         self.survivor_diversity_threshold = reward_cfg.get('survivor_diversity_threshold', 5)
         self.survivor_diversity_penalty = reward_cfg.get('survivor_diversity_penalty', 10000)
+        
+        # NEW: Diversity & Saturation parameters
+        self.diversity_bonus_weight = reward_cfg.get('diversity_bonus_weight', 50.0)
+        self.saturation_penalty_base = reward_cfg.get('saturation_penalty_base', 100.0)
+        self.saturation_optimal_per_segment = reward_cfg.get('saturation_optimal_per_segment', 3)
         
         # Bounds
         price_bounds = econ_cfg.get('price_bounds', {'min': 5.0, 'max': 100.0})
@@ -189,32 +198,32 @@ class SimpleEconomyEnv(MultiAgentEnv):
         self.firms = {}
         for i in range(self.n_firms):
             self.firms[f"firm_{i}"] = {
-                'price': np.random.uniform(price_range['min'], price_range['max']),
-                'wage': np.random.uniform(wage_range['min'], wage_range['max']),
+                'price': round(np.random.uniform(price_range['min'], price_range['max']), 2),
+                'wage': round(np.random.uniform(wage_range['min'], wage_range['max']), 2),
                 'max_employees': np.random.randint(emp_range['min'], emp_range['max'] + 1),
                 'employees': 0,
-                'inventory': 0.0,
-                'production': 0.0,
-                'capital': np.random.uniform(capital_range['min'], capital_range['max']),
+                'inventory': 0,  # Integer
+                'production': 0,  # Integer
+                'capital': round(np.random.uniform(capital_range['min'], capital_range['max']), 2),
                 'profit': 0.0,
                 'profit_last_step': 0.0,
                 'revenue': 0.0,
                 'costs': 0.0,
-                'sales': 0.0,
-                'sales_last_step': 0.0,
-                'quality': np.random.uniform(quality_range['min'], quality_range['max']),
-                'marketing': np.random.uniform(marketing_range['min'], marketing_range['max']),
+                'sales': 0,  # Integer
+                'sales_last_step': 0,  # Integer
+                'quality': round(np.random.uniform(quality_range['min'], quality_range['max']), 2),
+                'marketing': round(np.random.uniform(marketing_range['min'], marketing_range['max']), 2),
                 'bankrupt': False,
             }
         
-        # Initialize households with skill levels, max acceptable price, AND wealth type
+        # Initialize households
         wealth_probs = [wealth_dist['low'], wealth_dist['medium'], wealth_dist['high']]
         self.households = []
         for _ in range(self.n_households):
             self.households.append({
-                'money': np.random.uniform(money_range['min'], money_range['max']),
-                'skill_level': np.random.uniform(skill_range['min'], skill_range['max']),
-                'max_acceptable_price': np.random.uniform(max_price_range['min'], max_price_range['max']),
+                'money': round(np.random.uniform(money_range['min'], money_range['max']), 2),
+                'skill_level': round(np.random.uniform(skill_range['min'], skill_range['max']), 2),
+                'max_acceptable_price': round(np.random.uniform(max_price_range['min'], max_price_range['max']), 2),
                 'employer': None,
                 'wage': 0.0,
                 'wealth_type': np.random.choice(['low', 'medium', 'high'], p=wealth_probs),
@@ -225,6 +234,76 @@ class SimpleEconomyEnv(MultiAgentEnv):
         
         obs = {agent_id: self._get_obs(agent_id) for agent_id in self._agent_ids}
         return obs, {agent_id: {} for agent_id in self._agent_ids}
+    
+    def _classify_segment(self, firm):
+        """Classify firm into Budget/Mainstream/Premium based on price-quality ratio"""
+        price = firm['price']
+        quality = firm['quality']
+        
+        # Budget: Low price (<40€), any quality
+        if price < 40:
+            return 'budget'
+        # Premium: High price (>70€) OR very high quality (>1.5)
+        elif price > 70 or quality > 1.5:
+            return 'premium'
+        # Mainstream: Everything else
+        else:
+            return 'mainstream'
+    
+    def _calculate_diversity_bonus(self, firm_id):
+        """Calculate bonus for having unique strategy (Euclidean distance to nearest competitor)"""
+        firm = self.firms[firm_id]
+        my_strategy = np.array([firm['price'], firm['quality'], firm['marketing']])
+        
+        min_distance = float('inf')
+        
+        for other_id, other_firm in self.firms.items():
+            if other_id == firm_id or other_firm['bankrupt']:
+                continue
+            
+            other_strategy = np.array([other_firm['price'], other_firm['quality'], other_firm['marketing']])
+            distance = np.linalg.norm(my_strategy - other_strategy)
+            min_distance = min(min_distance, distance)
+        
+        # If we're the only firm, no bonus (division by zero prevention)
+        if min_distance == float('inf'):
+            return 0.0
+        
+        # Normalize distance (price in 10-1000 range, quality/marketing in 0.1-6.0)
+        # Typical distance: 20-100 → normalize to 0-1 range
+        normalized_distance = min(min_distance / 100.0, 1.0)
+        
+        return normalized_distance * self.diversity_bonus_weight
+    
+    def _calculate_saturation_penalty(self, firm_id):
+        """Penalize firms in overcrowded market segments"""
+        firm = self.firms[firm_id]
+        my_segment = self._classify_segment(firm)
+        
+        # Count firms in each segment (only active firms)
+        segment_counts = {'budget': 0, 'mainstream': 0, 'premium': 0}
+        
+        for other_id, other_firm in self.firms.items():
+            if other_firm['bankrupt']:
+                continue
+            segment = self._classify_segment(other_firm)
+            segment_counts[segment] += 1
+        
+        firms_in_my_segment = segment_counts[my_segment]
+        
+        # Optimal: saturation_optimal_per_segment firms per segment (default: 3)
+        if firms_in_my_segment <= self.saturation_optimal_per_segment:
+            return 0.0  # No penalty
+        
+        # Penalty scales with overcrowding
+        overcrowding = firms_in_my_segment - self.saturation_optimal_per_segment
+        penalty = -overcrowding * self.saturation_penalty_base
+        
+        # Extra harsh penalty if VERY overcrowded (>5 firms in one segment)
+        if firms_in_my_segment > 5:
+            penalty *= 2
+        
+        return penalty
     
     def step(self, action_dict):
         # Phase 0: Check and mark bankruptcies
@@ -245,13 +324,13 @@ class SimpleEconomyEnv(MultiAgentEnv):
             price_adjustment = self.adjustment_rates[price_action]
             if price_adjustment != 0:
                 firm['price'] *= (1 + price_adjustment)
-            firm['price'] = np.clip(firm['price'], self.price_min, self.price_max)
+            firm['price'] = round(np.clip(firm['price'], self.price_min, self.price_max), 2)
             
             # Apply wage adjustment
             wage_adjustment = self.adjustment_rates[wage_action]
             if wage_adjustment != 0:
                 firm['wage'] *= (1 + wage_adjustment)
-            firm['wage'] = np.clip(firm['wage'], self.wage_min, self.wage_max)
+            firm['wage'] = round(np.clip(firm['wage'], self.wage_min, self.wage_max), 2)
             
             # Marketing investment
             if marketing_action == 0:
@@ -259,26 +338,25 @@ class SimpleEconomyEnv(MultiAgentEnv):
             elif marketing_action == 2:
                 cost = self.marketing_cost_per_level
                 if firm['capital'] >= cost:
-                    firm['capital'] -= cost
-                    # NO hard cap at 1.0! Can go up to marketing_max (2.0)
+                    firm['capital'] = round(firm['capital'] - cost, 2)
                     firm['marketing'] = min(self.marketing_max, firm['marketing'] + 0.1)
+            firm['marketing'] = round(firm['marketing'], 2)
             
             # Quality improvement
             if quality_action == 1:
                 cost = self.quality_improvement_cost
                 if firm['capital'] >= cost:
-                    firm['capital'] -= cost
-                    # NO hard cap at 1.0! Can go up to quality_max (2.0)
+                    firm['capital'] = round(firm['capital'] - cost, 2)
                     firm['quality'] = min(self.quality_max, firm['quality'] + 0.05)
+            firm['quality'] = round(firm['quality'], 2)
             
-            # Capacity adjustment with HARD CAP (NEW)
+            # Capacity adjustment with HARD CAP
             if capacity_action == 0:
                 firm['max_employees'] = max(1, firm['max_employees'] - 1)
             elif capacity_action == 2:
                 cost = self.capacity_expansion_cost
-                # Check both capital AND hard cap
                 if firm['capital'] >= cost and firm['max_employees'] < self.max_employees_hard_cap:
-                    firm['capital'] -= cost
+                    firm['capital'] = round(firm['capital'] - cost, 2)
                     firm['max_employees'] += 1
             
             # Reset employees for labor market
@@ -287,7 +365,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
             
             # Store last step sales for trend calculation
             firm['sales_last_step'] = firm['sales']
-            firm['sales'] = 0.0
+            firm['sales'] = 0
         
         # Phase 2: Labor market with skill-based matching
         for household in self.households:
@@ -319,20 +397,20 @@ class SimpleEconomyEnv(MultiAgentEnv):
                     firm['employee_skills'].append(household['skill_level'])
                     
                     # Pay wage immediately
-                    household['money'] += firm['wage']
-                    firm['capital'] -= firm['wage']
+                    household['money'] = round(household['money'] + firm['wage'], 2)
+                    firm['capital'] = round(firm['capital'] - firm['wage'], 2)
                     break
         
         # Unemployed work for "suppliers" (supply chain companies)
         if active_firms:
             wages = [self.firms[aid]['wage'] for aid in active_firms]
-            supplier_wage = (min(wages) + max(wages)) / 2.0
+            supplier_wage = round((min(wages) + max(wages)) / 2.0, 2)
             
             for household in self.households:
                 if household['employer'] is None:
                     household['employer'] = 'suppliers'
                     household['wage'] = supplier_wage
-                    household['money'] += supplier_wage
+                    household['money'] = round(household['money'] + supplier_wage, 2)
         
         # Phase 3: Production (skill affects productivity)
         for agent_id in active_firms:
@@ -344,14 +422,14 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 skill_multiplier = self.skill_base_multiplier + (avg_skill * self.skill_factor)
                 
                 # Production = employees × base_productivity × skill_multiplier
-                production = firm['employees'] * self.productivity_base * skill_multiplier
+                production = int(firm['employees'] * self.productivity_base * skill_multiplier)
                 firm['production'] = production
                 firm['inventory'] += production
             else:
-                firm['production'] = 0.0
+                firm['production'] = 0
         
-        # Phase 4: SEQUENTIAL PURCHASING WITH WEALTH-BASED UTILITY (NEW!)
-        total_sales = {agent_id: 0.0 for agent_id in active_firms}
+        # Phase 4: SEQUENTIAL PURCHASING WITH WEALTH-BASED UTILITY
+        total_sales = {agent_id: 0 for agent_id in active_firms}
         
         # RANDOMIZE household order each step (fairness)
         households_random = self.households.copy()
@@ -375,9 +453,9 @@ class SimpleEconomyEnv(MultiAgentEnv):
             ]
             
             if not affordable_firms:
-                continue  # This household can't afford any firm
+                continue
             
-            # NEW: Wealth-based utility calculation!
+            # Wealth-based utility calculation
             wealth_type = household['wealth_type']
             wealth_mods = self.wealth_utility_modifiers.get(wealth_type, {})
             
@@ -386,7 +464,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
             quality_weight = self.utility_quality_weight * wealth_mods.get('quality_weight', 1.0)
             marketing_weight = self.utility_marketing_weight * wealth_mods.get('marketing_weight', 1.0)
             
-            # Calculate utility for affordable firms with WEALTH-BASED weights
+            # Calculate utility for affordable firms
             utilities = {}
             for firm_id in affordable_firms:
                 firm = self.firms[firm_id]
@@ -412,39 +490,35 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 reverse=True
             )
             
-            # Buy from firms in order until budget exhausted or all firms visited
+            # Buy from firms in order until budget exhausted
             for firm_id, utility_score in firms_sorted_by_utility:
                 if remaining_budget <= 0:
-                    break  # No money left
+                    break
                 
                 firm = self.firms[firm_id]
                 
-                # Skip if firm has no inventory
                 if firm['inventory'] <= 0:
                     continue
                 
-                # Calculate how much this household can buy from this firm
+                # Calculate purchase quantity (FLOAT, will be converted to INT)
                 max_quantity_by_budget = remaining_budget / firm['price'] if firm['price'] > 0 else 0
                 max_quantity_by_inventory = firm['inventory']
                 
-                # Actual purchase quantity (limited by budget OR inventory)
-                quantity = min(max_quantity_by_budget, max_quantity_by_inventory)
+                quantity_float = min(max_quantity_by_budget, max_quantity_by_inventory)
+                quantity = int(quantity_float)  # INTEGER QUANTITY
                 
                 if quantity > 0:
-                    actual_cost = quantity * firm['price']
+                    actual_cost = round(quantity * firm['price'], 2)
                     
                     # Execute purchase
                     total_sales[firm_id] += quantity
-                    household['money'] -= actual_cost
+                    household['money'] = round(household['money'] - actual_cost, 2)
                     firm['inventory'] -= quantity
-                    remaining_budget -= actual_cost
-                
-                # If this firm is sold out, move to next firm
-                # If household still has budget, continue buying from next best firm
+                    remaining_budget = round(remaining_budget - actual_cost, 2)
         
         # Update sales tracking
         for agent_id in active_firms:
-            self.firms[agent_id]['sales'] = total_sales.get(agent_id, 0.0)
+            self.firms[agent_id]['sales'] = total_sales.get(agent_id, 0)
         
         # Phase 5: Calculate profits, update capital, check bankruptcies
         rewards = {}
@@ -456,25 +530,22 @@ class SimpleEconomyEnv(MultiAgentEnv):
             firm = self.firms[agent_id]
             
             if firm['bankrupt']:
-                rewards[agent_id] = self.bankruptcy_penalty  # Severe penalty
+                rewards[agent_id] = self.bankruptcy_penalty
                 continue
             
             # Revenue from sales
-            revenue = total_sales.get(agent_id, 0.0) * firm['price']
+            revenue = round(total_sales.get(agent_id, 0) * firm['price'], 2)
             
-            # CONFIGURABLE QUALITY-BASED PRODUCTION COSTS
-            # Formula: base_cost × (1 + quality × quality_cost_factor)
-            # Works with ANY quality range (0.1-2.0 or even 0.3-6.0!)
+            # Quality-based production costs
             quality_cost_multiplier = 1.0 + (firm['quality'] * self.quality_cost_factor)
-            production_costs = firm['production'] * self.production_cost_per_unit * quality_cost_multiplier
+            production_costs = round(firm['production'] * self.production_cost_per_unit * quality_cost_multiplier, 2)
             
-            # Other costs remain unchanged
-            storage_costs = firm['inventory'] * self.storage_cost_per_unit
+            storage_costs = round(firm['inventory'] * self.storage_cost_per_unit, 2)
             fixed_costs = self.fixed_costs
             
-            total_costs = production_costs + storage_costs + fixed_costs
+            total_costs = round(production_costs + storage_costs + fixed_costs, 2)
             
-            profit = revenue - total_costs
+            profit = round(revenue - total_costs, 2)
             
             firm['revenue'] = revenue
             firm['costs'] = total_costs
@@ -482,7 +553,7 @@ class SimpleEconomyEnv(MultiAgentEnv):
             firm['profit'] = profit
             
             # Update capital
-            firm['capital'] += profit
+            firm['capital'] = round(firm['capital'] + profit, 2)
             
             # Check bankruptcy
             if firm['capital'] < self.bankruptcy_threshold:
@@ -490,8 +561,8 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 self.bankruptcies_this_episode += 1
                 rewards[agent_id] = self.bankruptcy_penalty
             else:
-                # REBALANCED REWARD SHAPING
-                base_reward = profit / self.reward_scale  # REDUCED impact (scale 1000 vs 100)
+                # BASE REWARD
+                base_reward = profit / self.reward_scale
                 
                 # Capital bonus
                 capital_bonus = 0.0
@@ -516,11 +587,24 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 if revenue == 0:
                     exploration_penalty = -self.exploration_penalty
                 
-                # Total reward
-                rewards[agent_id] = (base_reward + capital_bonus + market_share_bonus + 
-                                   inventory_penalty + exploration_penalty)
+                # NEW: DIVERSITY BONUS (reward unique strategies)
+                diversity_bonus = self._calculate_diversity_bonus(agent_id)
+                
+                # NEW: MARKET SATURATION PENALTY (penalize overcrowded segments)
+                saturation_penalty = self._calculate_saturation_penalty(agent_id)
+                
+                # TOTAL REWARD
+                rewards[agent_id] = (
+                    base_reward + 
+                    capital_bonus + 
+                    market_share_bonus + 
+                    inventory_penalty + 
+                    exploration_penalty +
+                    diversity_bonus +
+                    saturation_penalty
+                )
         
-        # NEW: Survivor diversity penalty (end of episode)
+        # Survivor diversity penalty (end of episode)
         if self.timestep == self.max_steps - 1:
             active_count = sum(1 for f in self.firms.values() if not f['bankrupt'])
             
@@ -528,7 +612,6 @@ class SimpleEconomyEnv(MultiAgentEnv):
                 missing_survivors = self.survivor_diversity_threshold - active_count
                 diversity_penalty = missing_survivors * self.survivor_diversity_penalty
                 
-                # Apply penalty to surviving firms (they should have kept competition alive)
                 for agent_id in self._agent_ids:
                     if not self.firms[agent_id]['bankrupt']:
                         rewards[agent_id] -= diversity_penalty
