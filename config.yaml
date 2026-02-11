@@ -13,20 +13,20 @@ initial_ranges:
   # Firm starting values
   firms:
     price:
-      min: 15.0                  # Minimum initial price
-      max: 35.0                  # Maximum initial price
+      min: 20.0                  # Minimum initial price
+      max: 80.0                  # Maximum initial price
     wage:
       min: 15.0                  # Minimum initial wage
-      max: 35.0                  # Maximum initial wage
+      max: 50.0                  # Maximum initial wage
     max_employees:
-      min: 50                    
-      max: 120                   
+      min: 8                    
+      max: 20                   
     capital:
-      min: 5000.0                # Minimum starting capital
-      max: 10000.0               # Maximum starting capital
+      min: 50000.0                # Minimum starting capital
+      max: 100000.0               # Maximum starting capital
     quality:
-      min: 0.25                  
-      max: 0.75                  
+      min: 0.15                  
+      max: 0.50                  
     marketing:
       min: 0.15                  
       max: 0.60                  
@@ -34,14 +34,14 @@ initial_ranges:
   # Household starting values
   households:
     money:
-      min: 100.0                 # Minimum starting money
-      max: 200.0                 # Maximum starting money
+      min: 1000.0                 # Minimum starting money
+      max: 2000.0                 # Maximum starting money
     skill_level:
       min: 0.2                   # Minimum skill (low qualified)
       max: 1.0                   # Maximum skill (highly qualified)
     max_acceptable_price:        
-      min: 10.0                  
-      max: 100.0                 
+      min: 1.0                  
+      max: 1000.0                 
     wealth_distribution:         # Probability distribution
       low: 0.3                   # 30% low wealth households
       medium: 0.5                # 50% medium wealth households
@@ -51,7 +51,7 @@ initial_ranges:
 # TRAINING CONFIGURATION
 
 training:
-  iterations: 100                
+  iterations: 200                
   checkpoint_frequency: 20       # Save checkpoint every N iterations
   
   # PPO Hyperparameters
