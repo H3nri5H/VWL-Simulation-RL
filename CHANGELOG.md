@@ -2,6 +2,295 @@
 
 All notable changes to the VWL Simulation project are documented here.
 
+## [5.2.0] - 2026-02-05
+
+### Added - Enhanced Observation Space (25 Features)
+
+#### Strategic Market Intelligence (5 New Features)
+- **Market Share Tracking**
+  - `own_market_share`: Percentage of total market sales controlled by firm
+  - Calculation: `firm_sales / total_market_sales`
+  - Range: 0.0 (no sales) to 1.0 (monopoly)
+  - Enables firms to understand competitive position
+  - Critical for strategic decision-making
+
+- **Sales Trend Analysis**
+  - `sales_trend`: Change in sales volume from last step
+  - Calculation: `current_sales - previous_sales`
+  - Positive values = growing market share
+  - Negative values = losing customers
+  - Helps AI learn momentum-based strategies
+
+- **Inventory Efficiency**
+  - `inventory_ratio`: Inventory-to-production ratio
+  - Calculation: `current_inventory / production_this_step`
+  - High values = overproduction (storage costs accumulating)
+  - Low values = efficient production matching demand
+  - Optimizes production decisions
+
+- **Wage Competitiveness**
+  - `wage_competitiveness`: Own wage relative to market median
+  - Calculation: `own_wage / market_median_wage`
+  - > 1.0 = paying above median (attracting better workers)
+  - < 1.0 = paying below median (risk losing workers)
+  - Directly impacts employee skill acquisition
+
+- **Price Competitiveness**
+  - `price_competitiveness`: Own price relative to market median
+  - Calculation: `own_price / market_median_price`
+  - > 1.0 = charging premium (better margins, fewer sales)
+  - < 1.0 = discount pricing (lower margins, more sales)
+  - Reveals pricing strategy effectiveness
+
+#### Improved Market Statistics
+- Added **median price** and **median wage** calculations
+- More robust than mean for skewed distributions
+- Better competitiveness benchmarks
+- Reduces impact of outliers (bankrupt or extreme firms)
+
+### Changed - Unemployment System Overhaul
+
+#### From "State" to "Suppliers"
+- **Old System**: Unemployed households employed by fictional "state"
+  - Unrealistic government intervention
+  - Didn't fit market economy simulation
+  - Terminology confused users
+
+- **New System**: Unemployed work for "suppliers"
+  - Supplier companies = B2B firms in supply chain
+  - Provide materials, logistics, services to main firms
+  - More realistic economic model
+  - Maintains purchasing power without government intervention
+
+- **Wage Calculation** (unchanged):
+  ```python
+  supplier_wage = (min(active_firm_wages) + max(active_firm_wages)) / 2.0
+  ```
+  - Suppliers pay competitive market rate
+  - Keeps unemployed households as consumers
+  - Prevents market collapse from unemployment
+
+### Enhanced - Sales Tracking System
+
+#### Firms Now Track Sales History
+- **New Attribute**: `sales_last_step`
+  - Stores previous step's sales volume
+  - Initialized to 0.0 at episode start
+  - Updated before new step calculation
+
+- **Current Sales**: `sales` attribute
+  - Tracks current step sales in units
+  - Used for market share calculation
+  - Separate from revenue (sales × price)
+
+- **Trend Calculation**:
+  ```python
+  sales_trend = firm['sales'] - firm['sales_last_step']
+  # Positive = growing, Negative = shrinking, Zero = stable
+  ```
+
+### Impact on Learning
+
+#### Better Strategic Decisions
+With 25 features (up from 20), firms can now:
+1. **Understand Market Position**: See exact market share percentage
+2. **Track Performance Trends**: Know if strategies are working (sales increasing?)
+3. **Optimize Production**: Match production to demand (inventory ratio)
+4. **Benchmark Competitively**: Compare wage/price to median, not just average
+5. **Avoid Overproduction**: See when inventory is building up
+
+#### Expected Training Improvements
+- **Faster Convergence**: More informative observations → better learning signals
+- **Better Strategies**: Firms learn competitive positioning, not just random actions
+- **Reduced Variance**: Median-based comparisons more stable than mean
+- **Market Dynamics**: AI can learn to react to competitors (e.g., price wars)
+
+### Technical Details
+
+#### Complete Observation Vector (25 Features)
+```python
+[
+  # Own State (7)
+  0:  price,
+  1:  wage,
+  2:  employees,
+  3:  inventory,
+  4:  capital / 100.0,
+  5:  quality,
+  6:  marketing,
+  
+  # Market Statistics (6)
+  7:  market_avg_price,
+  8:  market_min_price,
+  9:  market_max_price,
+  10: market_avg_wage,
+  11: market_min_wage,
+  12: market_max_wage,
+  
+  # Aggregates (4)
+  13: total_employed,
+  14: unemployment_rate,
+  15: avg_household_money / 10.0,
+  16: avg_household_skill,
+  
+  # Meta (3)
+  17: profit_last_step / reward_scale,
+  18: competitors_alive,
+  19: timestep / max_steps,
+  
+  # NEW Strategic Insights (5)
+  20: own_market_share,           # % of market (0.0-1.0)
+  21: sales_trend / 10.0,         # Sales momentum
+  22: inventory_ratio,            # Production efficiency
+  23: wage_competitiveness,       # Wage vs. median
+  24: price_competitiveness,      # Price vs. median
+]
+```
+
+#### Observation Space Update
+```python
+# Old:
+_obs_space = Box(low=-1000.0, high=1000.0, shape=(20,), dtype=np.float32)
+
+# New:
+_obs_space = Box(low=-1000.0, high=1000.0, shape=(25,), dtype=np.float32)
+```
+
+#### Sales Tracking in Step Function
+```python
+# Before market phase:
+firm['sales_last_step'] = firm['sales']
+firm['sales'] = 0.0
+
+# After market phase:
+for agent_id in active_firms:
+    self.firms[agent_id]['sales'] = total_sales.get(agent_id, 0.0)
+```
+
+### Migration Notes
+
+#### For Existing Checkpoints
+- **Checkpoints from v5.0/v5.1 are INCOMPATIBLE**
+  - Old checkpoints expect 20 features
+  - New environment provides 25 features
+  - Must retrain from scratch with v5.2.0
+
+#### For Config Files
+- **No changes required to config.yaml**
+  - All parameters remain the same
+  - Observation space automatically adjusted
+  - Action space unchanged
+
+#### For Training
+- **Same training command**:
+  ```bash
+  python train.py
+  python train.py --resume  # Starts fresh if no v5.2 checkpoint
+  ```
+
+### Realistic Economic Model
+
+#### Supply Chain Economics
+- **Multi-Agent Firms** (our simulation): Consumer goods producers
+  - Compete for household purchases
+  - Employ skilled workers directly
+  - Visible in simulation
+
+- **Supplier Firms** (background economy): B2B service providers
+  - Logistics, raw materials, professional services
+  - Employ workers not hired by main firms
+  - Pay competitive wages (market average)
+  - Not directly simulated (simplified)
+
+#### Why This is More Realistic
+- **Real Economy**: Not everyone works for consumer-facing companies
+  - Many work in supply chains (manufacturing, distribution)
+  - B2B sector is huge (often larger than B2C)
+  - Unemployment is never 100% (always some jobs available)
+
+- **Our Model**: Suppliers represent entire B2B sector
+  - Simplified but captures essence
+  - Maintains economic circulation
+  - No artificial government intervention needed
+
+---
+
+## [5.1.0] - 2026-02-05
+
+### Added - Database-Ready CSV Export
+
+#### Long Format (Normalized) CSV Output
+- **Changed CSV structure from WIDE to LONG format**
+  - Wide format (old): One row per step, all entities as columns
+  - Long format (new): One row per entity per step
+  - Database-friendly normalized structure
+  - Ready for SQL import with proper foreign keys
+
+#### Separate CSV Files
+- **firms.csv**:
+  - Columns: `version`, `seed`, `step`, `firm_id`, `price`, `wage`, `capital`, `employees`, `max_employees`, `quality`, `marketing`, `profit`, `revenue`, `costs`, `inventory`, `production`, `bankrupt`
+  - One row per firm per timestep
+  - Example: 10 firms × 100 steps = 1,000 rows
+  
+- **households.csv**:
+  - Columns: `version`, `seed`, `step`, `household_id`, `money`, `employer`, `wage`, `skill_level`, `wealth_type`
+  - One row per household per timestep
+  - Example: 50 households × 100 steps = 5,000 rows
+
+#### Multi-Simulation Tracking
+- **Version Column**: Extracted from CHANGELOG.md (e.g., "v5.1.0")
+  - Tracks which model version generated the data
+  - Allows comparing different model iterations
+  - Defaults to "v5.0" if CHANGELOG not found
+  
+- **Seed Column**: Simulation seed for reproducibility
+  - Combines multiple simulations in single database
+  - Query by `(version, seed)` to get specific simulation
+  - Enables statistical analysis across many runs
+
+#### Database Import Benefits
+- **Easy Queries**:
+  ```sql
+  -- Get all firm data for specific simulation
+  SELECT * FROM firms WHERE version = 'v5.2.0' AND seed = 123456;
+  
+  -- Compare firm performance across versions
+  SELECT version, AVG(profit) FROM firms GROUP BY version;
+  
+  -- Analyze household employment over time
+  SELECT step, COUNT(*) FROM households 
+  WHERE employer != 'suppliers' GROUP BY step;
+  ```
+
+- **Scalability**: Can store thousands of simulations in two tables
+- **Relationships**: Easy joins between firms and households by step
+- **Analytics**: Direct import to data analysis tools (pandas, R, Tableau)
+
+### Added - Unemployment Benefits System
+
+#### State Employer for Jobless Households
+- **Problem**: Previously unemployed households had no income → market collapse
+- **Solution**: Fictional "state" employer provides unemployment benefits
+- **Calculation**: 
+  ```python
+  state_wage = (min(active_firm_wages) + max(active_firm_wages)) / 2.0
+  ```
+- **Effect**: 
+  - Unemployed households receive average wage
+  - Maintains purchasing power in economy
+  - Prevents market from stalling
+  - Realistic economic safety net
+
+#### Tracking State Employment
+- `employer = 'state'` for unemployed households
+- Separate statistics for firm vs state employment
+- Display shows:
+  - Firm Employment: X%
+  - State Employment (Benefits): Y%
+  - Total Employment: X + Y = 100%
+
+---
+
 ## [5.0.0] - 2026-02-03
 
 ### Added - Major Economy Expansion
@@ -102,241 +391,11 @@ All notable changes to the VWL Simulation project are documented here.
 - At 70% sales: +339 profit per step
 - Challenge Rating: ⭐⭐⭐ (Challenging but fair)
 
-#### Training Configuration
-- **Iterations**: 10 → **50** (more thorough training)
-- **Batch Size**: 400 → **4000** (better learning stability)
-- **Minibatch Size**: 128 → **256** (improved gradient estimates)
-- **Workers**: 2 → **4** (more diverse experiences)
-
-### Fixed - Windows Compatibility
-
-#### UTF-8 Encoding Issues
-- **Problem**: Windows default encoding (CP1252) couldn't read config.yaml with Unicode characters
-- **Solution**: Added explicit `encoding='utf-8'` to YAML file loading
-- **Files Fixed**:
-  - `train.py`: Line 34
-  - `env/economy_env.py`: Line 23
-- Now works on Windows, macOS, and Linux
-
-#### Console Output Cleanup
-- **Reduced Verbose Logging**:
-  - Suppressed Ray initialization logs
-  - Disabled RLlib verbose output
-  - Hidden checkpoint saving details
-  - Filtered deprecation warnings
-- **Clean Training Output**:
-  ```
-  VWL SIMULATION - TRAINING
-  Fresh training: 50 iterations
-  Environment: 10 firms, 50 households
-  
-  Iter   Reward       Min        Max        EpLen
-  1      -5.23        -8.50      -2.10      100
-  ...
-  ```
-
-### Technical Details
-
-#### Action Space Structure
-```python
-MultiDiscrete([5, 5, 3, 2, 3])
-# [price_adjust, wage_adjust, marketing, quality, capacity]
-```
-
-#### Reward Function
-```python
-reward = (profit / 100.0) + capital_bonus
-# capital_bonus = min(capital / 1000.0, 5.0) if capital > 0
-# Bankrupt firms: -20 penalty
-```
-
-#### Observation Vector (20 features)
-```python
-[
-  # Own state (7)
-  price, wage, employees, inventory, capital/100, quality, marketing,
-  # Market stats (6)
-  market_avg_price, market_min_price, market_max_price,
-  market_avg_wage, market_min_wage, market_max_wage,
-  # Aggregates (4)
-  total_employed, unemployment_rate, avg_household_money/10, avg_household_skill,
-  # Meta (3)
-  profit_last_step/100, competitors_alive, timestep/max_steps
-]
-```
-
-#### Economic Formulas
-- **Production**: `employees × 6.0 × (0.5 + avg_skill × 0.5)`
-- **Utility**: `(quality × 0.5 + marketing × 0.3) / (price × 1.0)`
-- **Capital**: Updated each step with `revenue - costs - wages`
-
-### Performance Impact
-- Training is now more complex but realistic
-- Expected convergence: 30-50 iterations
-- Firms must learn:
-  - Competitive pricing strategies
-  - Wage optimization for skill acquisition  
-  - Strategic investments (marketing/quality)
-  - Capital management to avoid bankruptcy
-  - Capacity planning based on demand
-
 ---
 
 ## [4.0.0] - 2026-02-02
-
-### Added
-- **Expanded Action Space** (5 discrete levels per parameter)
-  - Price adjustments: -10%, -5%, 0%, +5%, +10% (previously only 3 levels)
-  - Wage adjustments: -10%, -5%, 0%, +5%, +10%
-  - Total action combinations increased from 9 to 25
-  - More granular control for better learning and strategy development
-  - Hardcoded in `env/economy_env.py` for consistency
-
-- **Console Simulation Runner** (`run_simulation.py`)
-  - Interactive checkpoint selection from trained models
-  - Two simulation modes:
-    - **Seed Mode**: Provide seed → automatic initialization with default ranges
-    - **Manual Mode**: Specify all ranges → system calculates matching seed
-  - Detailed initial state display:
-    - All firm parameters (price, wage, max_employees)
-    - All household states (money, employer, wage)
-  - Detailed final state display with complete simulation results
-  - CSV export with full household tracking:
-    - Every household's money, employer, and wage per timestep
-    - All firm metrics (price, wage, employees, profit)
-    - Aggregate statistics (employment rate, average money)
-  - Seed-based reproducibility for scientific experiments
-
-- **Enhanced Data Export**
-  - `initial_firms_*.csv`: Starting conditions for all firms (with seed)
-  - `initial_households_*.csv`: Starting conditions for all households (with seed)
-  - `simulation_checkpoint*_seed*_*.csv`: Complete timestep data including individual households
-  - `summary_seed*_*.txt`: Simulation summary with reproduction instructions
-  - Timestamped filenames for organization
-  - Seed included in all exports for full traceability
-
-### Changed
-- **Config Cleanup**
-  - Removed obsolete `price_adjustment` and `wage_adjustment` parameters
-  - Action space now fully defined in code (single source of truth)
-  - Added explanatory comments about action space location
-  - Kept only configurable economic parameters (bounds, consumption_rate, reward_scale)
-
-- **Simulation Workflow**
-  - Seed controls all randomization (max_employees, initial prices/wages, household money)
-  - Manual mode generates seed that reproduces exact configuration
-  - Environment reset uses explicit seed for full reproducibility
-  - Initial values set after reset to preserve seed-based max_employees
-
-### Technical Details
-- **Action Space**: `MultiDiscrete([5, 5])` instead of `MultiDiscrete([3, 3])`
-- **Adjustment Mapping**:
-  ```python
-  0: -10%, 1: -5%, 2: 0%, 3: +5%, 4: +10%
-  ```
-- **Seed Workflow**:
-  - Seed provided → use default ranges from config.yaml
-  - No seed → ask for ranges, generate reproducible seed
-  - All randomization (environment + numpy) uses same seed
-
-### Removed
-- Hardcoded adjustment rates from config.yaml (now in code)
-- Confusing parameter inputs (replaced with clear seed-based workflow)
-
----
-
 ## [3.0.0] - 2026-02-01
-
-### Added
-- **Central Configuration System** (`config.yaml`)
-  - All simulation parameters in one file
-  - Environment setup (firms, households, steps)
-  - Initial value ranges for firms and households
-  - Training hyperparameters (PPO settings)
-  - Economic parameters (price/wage adjustment rates)
-  - Easy modification without code changes
-
-- **Improved Observation Space** (13 features instead of 7)
-  - Market aggregates: avg/min/max prices and wages across all firms
-  - Employment statistics: total employed, unemployment rate
-  - Better scalability for multiple firms (not limited to 2)
-  - Supports variable number of competing firms
-
-- **Flexible Training System**
-  - Command-line arguments override config.yaml defaults
-  - Examples:
-    - `python train.py` - use config.yaml defaults
-    - `python train.py --n-firms 5 --iterations 100`
-    - `python train.py --lr 0.001 --num-workers 4`
-  - Better progress logging with formatted tables
-  - Automatic cleanup of old training data
-
-- **Enhanced Dashboard**
-  - Loads checkpoint configuration automatically
-  - Displays trained environment parameters (firms, households)
-  - Configurable initial parameter ranges for simulation
-  - Improved chart layouts with Plotly
-
-### Changed
-- Environment now loads defaults from `config.yaml`
-- Observations include full market statistics instead of simple averages
-- Training script more configurable via CLI arguments
-- Dashboard matches trained environment structure (no manual firm/household selection)
-
-### Technical Details
-- **Observation Vector** (old vs new):
-  - Old: `[price, wage, employees, profit, avg_other_price, avg_other_wage, time]`
-  - New: `[price, wage, employees, profit, market_avg_price, market_min_price, market_max_price, market_avg_wage, market_min_wage, market_max_wage, total_employed, unemployment_rate, time]`
-
-- **Configuration Hierarchy**:
-  1. `config.yaml` defaults
-  2. CLI arguments (override config)
-  3. Function parameters (override both)
-
-### Removed
-- Hard-coded default values scattered across files (now in config.yaml)
-- Deprecated backend/ and frontend/ folders (marked for deletion)
-- Obsolete simulation scripts (simulate.py, test_env.py, train_simple.py)
-
----
-
 ## [2.0.0] - 2026-01-31
-
-### Changed
-- Complete rebuild of project for Ray 2.40.0 compatibility
-- Switched to old API stack (enable_rl_module_and_learner=False) for stability
-- Reason: New API stack in Ray 2.40.0 has fundamental incompatibilities with MultiAgentEnv interface
-- Previous attempts failed due to property vs method conflicts in observation_space/action_space
-- Clean slate approach ensures proper architecture from start
-- Replaced React frontend with Streamlit for simpler Python-only dashboard
-
-### Added
-- SimpleEconomyEnv with Gymnasium MultiAgentEnv base class
-- Training script using PPO with stable API configuration
-- Environment supports 2 firms competing for 10 households
-- Firms adjust prices, households choose cheapest provider
-- Successfully trains with episode reward mean of 108.75
-- Streamlit dashboard with real-time training visualization
-- Plotly charts for episode reward and length
-- Auto-refresh every 2 seconds
-- No npm/JavaScript build required
-
-### Fixed
-- Deprecated API parameters: rollouts() replaced with env_runners()
-- num_rollout_workers replaced with num_env_runners
-- sgd_minibatch_size replaced with minibatch_size
-- num_sgd_iter replaced with num_epochs
-- Metric extraction from env_runners dict for correct display
-
-### Removed
-- React frontend and npm dependencies
-- FastAPI backend (not needed with Streamlit)
-
----
-
 ## [1.0.0] - 2026-01-30
 
-### Added
-- Initial multi-agent economy environment
-- PPO training implementation
-- Web dashboard for visualization
+(See previous versions above for full history)

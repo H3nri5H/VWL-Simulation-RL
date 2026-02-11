@@ -43,8 +43,6 @@ venv.bak/
 # Ray/RLlib
 ~/ray_results/
 ray_results/
-*.pkl
-checkpoint_*/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -57,14 +55,13 @@ simulation_results/
 
 # Model Checkpoints
 models/
-checkpoints/
 *.pth
 *.h5
 
 # Data
 data/
 *.csv
-*.json
+metrics/
 
 # Plots
 plots/
@@ -77,3 +74,4 @@ notebooks
 
 #database
 database/cloud-sql-proxy
+database/.env

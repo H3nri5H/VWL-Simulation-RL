@@ -1,0 +1,25 @@
+services:
+  uploader:
+    build: .
+    container_name: db_uploader
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ../simulation_results:/app/simulation_results
+    depends_on:
+      - cloud-sql-proxy
+
+  cloud-sql-proxy:
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:latest
+    container_name: db_proxy
+    volumes:
+      # Mountet dein Mac-Login-Token in den Container
+      - ~/.config/gcloud:/config/gcloud:ro
+    environment:
+      # Sagt dem Proxy, wo das Token liegt
+      - GOOGLE_APPLICATION_CREDENTIALS=/config/gcloud/application_default_credentials.json
+    command:
+      - "--address=0.0.0.0"
+      - "cloudcomputing-fortgki-projekt:europe-west3:sim-db-pg-main"
