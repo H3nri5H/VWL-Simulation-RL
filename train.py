@@ -85,6 +85,9 @@ def train(resume=False):
         'max_steps': env_cfg.get('max_steps', 100),
     }
     
+    # Extract n_firms for policy creation
+    n_firms = env_config['n_firms']
+    
     train_cfg = config.get('training', {})
     config_iterations = train_cfg.get('iterations', 50)
     checkpoint_freq = train_cfg.get('checkpoint_frequency', 10)
@@ -132,6 +135,7 @@ def train(resume=False):
     
     print(f"Environment: {env_config['n_firms']} firms, {env_config['n_households']} households")
     print(f"Resources: {n_workers} workers, {n_gpus} GPUs")
+    print(f"Policy setup: {n_firms} independent firm policies (heterogeneous learning)")
     print("\nBuilding algorithm...")
     
     if resume and resume_checkpoint:
@@ -145,6 +149,20 @@ def train(resume=False):
             sys.stdout = old_stdout
         print("Algorithm loaded from checkpoint")
     else:
+        # Create separate policy for each firm
+        env_temp = SimpleEconomyEnv(env_config)
+        obs_space = env_temp.observation_space
+        act_space = env_temp.action_space
+        
+        policies = {}
+        for i in range(n_firms):
+            policy_id = f"firm_{i}"
+            policies[policy_id] = (None, obs_space, act_space, {})
+        
+        def policy_mapping_fn(agent_id, *args, **kwargs):
+            """Map each firm agent to its own policy"""
+            return agent_id  # agent_id is already "firm_0", "firm_1", etc.
+        
         rllib_config = (
             PPOConfig()
             .api_stack(
@@ -170,15 +188,8 @@ def train(resume=False):
                 clip_param=clip_val,
             )
             .multi_agent(
-                policies={
-                    "shared_policy": (
-                        None,
-                        SimpleEconomyEnv({}).observation_space,
-                        SimpleEconomyEnv({}).action_space,
-                        {},
-                    )
-                },
-                policy_mapping_fn=lambda agent_id, *args, **kwargs: "shared_policy",
+                policies=policies,
+                policy_mapping_fn=policy_mapping_fn,
             )
             .resources(
                 num_gpus=n_gpus,
