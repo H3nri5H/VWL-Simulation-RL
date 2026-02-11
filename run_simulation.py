@@ -13,64 +13,18 @@ os.environ['RAY_DISABLE_MEMORY_MONITOR'] = '1'
 os.environ['RAY_DISABLE_IMPORT_WARNING'] = '1'
 os.environ['PYTHONWARNINGS'] = 'ignore'
 os.environ['RAY_COLOR_PREFIX'] = '0'
+os.environ['RAY_LOG_TO_STDERR'] = '0'
 
 import warnings
 import logging
 warnings.filterwarnings('ignore')
 logging.basicConfig(level=logging.CRITICAL)
-logging.getLogger('ray').setLevel(logging.CRITICAL)
-logging.getLogger('ray.tune').setLevel(logging.CRITICAL)
-logging.getLogger('ray.rllib').setLevel(logging.CRITICAL)
-logging.getLogger('ray.serve').setLevel(logging.CRITICAL)
-logging.getLogger('ray.core').setLevel(logging.CRITICAL)
+for logger_name in ['ray', 'ray.tune', 'ray.rllib', 'ray.serve', 'ray.core']:
+    logging.getLogger(logger_name).setLevel(logging.CRITICAL)
+    logging.getLogger(logger_name).propagate = False
 
 from ray.rllib.algorithms.ppo import PPO
 from env.economy_env import SimpleEconomyEnv
-
-
-def load_config():
-    """Load environment configuration"""
-    config_path = Path("config.yaml")
-    if config_path.exists():
-        with open(config_path, 'r', encoding='utf-8') as f:
-            return yaml.safe_load(f)
-    return {}
-
-
-def find_checkpoint(checkpoint_path=None):
-    """Find checkpoint to use for simulation"""
-    if checkpoint_path:
-        if os.path.exists(checkpoint_path):
-            return os.path.abspath(checkpoint_path)
-        print(f"Error: Checkpoint not found: {checkpoint_path}")
-        return None
-    
-    checkpoint_dir = Path("./checkpoints")
-    if not checkpoint_dir.exists():
-        print("Error: No checkpoints directory found.")
-        return None
-    
-    checkpoints = []
-    for cp_dir in checkpoint_dir.iterdir():
-        if cp_dir.is_dir() and cp_dir.name.startswith('checkpoint_'):
-            metadata_file = cp_dir / "metadata.json"
-            if metadata_file.exists():
-                with open(metadata_file, 'r') as f:
-                    metadata = json.load(f)
-                    is_favorite = metadata.get('is_favorite', False)
-                    iteration = metadata.get('iteration', 0)
-                    checkpoints.append((os.path.abspath(str(cp_dir)), iteration, is_favorite))
-    
-    if not checkpoints:
-        print("Error: No valid checkpoints found.")
-        return None
-    
-    favorite = [cp for cp in checkpoints if cp[2]]
-    if favorite:
-        return favorite[0][0]
-    
-    checkpoints.sort(key=lambda x: x[1])
-    return checkpoints[-1][0]
 
 
 class SuppressOutput:
@@ -89,16 +43,149 @@ class SuppressOutput:
         sys.stderr = self.old_stderr
 
 
-def run_simulation(checkpoint_path=None, seed=None, verbose=False):
+def load_config():
+    """Load environment configuration"""
+    config_path = Path("config.yaml")
+    if config_path.exists():
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f)
+    return {}
+
+
+def list_checkpoints():
+    """List all available checkpoints"""
+    checkpoint_dir = Path("./checkpoints")
+    if not checkpoint_dir.exists():
+        return []
+    
+    checkpoints = []
+    for cp_dir in checkpoint_dir.iterdir():
+        if cp_dir.is_dir() and cp_dir.name.startswith('checkpoint_'):
+            metadata_file = cp_dir / "metadata.json"
+            if metadata_file.exists():
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+                    is_favorite = metadata.get('is_favorite', False)
+                    iteration = metadata.get('iteration', 0)
+                    timestamp = metadata.get('timestamp', 'unknown')
+                    checkpoints.append({
+                        'path': os.path.abspath(str(cp_dir)),
+                        'iteration': iteration,
+                        'favorite': is_favorite,
+                        'timestamp': timestamp
+                    })
+    
+    checkpoints.sort(key=lambda x: x['iteration'])
+    return checkpoints
+
+
+def select_checkpoint_interactive():
+    """Interactive checkpoint selection"""
+    checkpoints = list_checkpoints()
+    
+    if not checkpoints:
+        print("Error: No checkpoints found.")
+        return None
+    
+    print("\n" + "="*60)
+    print("  AVAILABLE CHECKPOINTS")
+    print("="*60)
+    for idx, cp in enumerate(checkpoints, 1):
+        fav_marker = " ★" if cp['favorite'] else ""
+        print(f"{idx}. Iteration {cp['iteration']:3d} - {cp['timestamp']}{fav_marker}")
+    print("="*60)
+    
+    while True:
+        try:
+            choice = input(f"\nSelect checkpoint [1-{len(checkpoints)}]: ").strip()
+            if not choice:
+                print("Using latest checkpoint...")
+                return checkpoints[-1]['path']
+            idx = int(choice) - 1
+            if 0 <= idx < len(checkpoints):
+                return checkpoints[idx]['path']
+            print(f"Invalid choice. Please enter 1-{len(checkpoints)}.")
+        except (ValueError, KeyboardInterrupt):
+            print("\nCancelled.")
+            return None
+
+
+def get_seed_interactive():
+    """Interactive seed selection"""
+    while True:
+        try:
+            seed_input = input("\nEnter seed (press Enter for random): ").strip()
+            if not seed_input:
+                seed = np.random.randint(0, 1000000)
+                print(f"Generated random seed: {seed}")
+                return seed
+            return int(seed_input)
+        except ValueError:
+            print("Invalid seed. Please enter a number.")
+        except KeyboardInterrupt:
+            print("\nCancelled.")
+            return None
+
+
+def get_steps_interactive(default_steps):
+    """Interactive steps selection"""
+    while True:
+        try:
+            steps_input = input(f"\nEnter number of steps (press Enter for default {default_steps}): ").strip()
+            if not steps_input:
+                print(f"Using default: {default_steps} steps")
+                return default_steps
+            steps = int(steps_input)
+            if steps > 0:
+                return steps
+            print("Steps must be positive.")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
+        except KeyboardInterrupt:
+            print("\nCancelled.")
+            return None
+
+
+def run_simulation(checkpoint_path=None, seed=None, max_steps=None, interactive=True):
     """Run single simulation episode with trained policies"""
-    if seed is None:
-        seed = np.random.randint(0, 1000000)
     
-    checkpoint_path = find_checkpoint(checkpoint_path)
-    if not checkpoint_path:
-        return
+    # Interactive mode
+    if interactive:
+        if checkpoint_path is None:
+            checkpoint_path = select_checkpoint_interactive()
+            if checkpoint_path is None:
+                return
+        
+        if seed is None:
+            seed = get_seed_interactive()
+            if seed is None:
+                return
+        
+        # Load config to get default steps
+        config = load_config()
+        default_steps = config.get('environment', {}).get('max_steps', 365)
+        
+        if max_steps is None:
+            max_steps = get_steps_interactive(default_steps)
+            if max_steps is None:
+                return
+    else:
+        # Non-interactive fallbacks
+        if checkpoint_path is None:
+            checkpoints = list_checkpoints()
+            if not checkpoints:
+                print("Error: No checkpoints found.")
+                return
+            checkpoint_path = checkpoints[-1]['path']
+        
+        if seed is None:
+            seed = np.random.randint(0, 1000000)
+        
+        if max_steps is None:
+            config = load_config()
+            max_steps = config.get('environment', {}).get('max_steps', 365)
     
-    # Suppress Ray output during loading
+    # Load algorithm
     with SuppressOutput():
         algo = PPO.from_checkpoint(checkpoint_path)
     
@@ -114,10 +201,12 @@ def run_simulation(checkpoint_path=None, seed=None, verbose=False):
         env_config = {
             'n_firms': env_cfg.get('n_firms', 10),
             'n_households': env_cfg.get('n_households', 3000),
-            'max_steps': env_cfg.get('max_steps', 365),
+            'max_steps': max_steps,
         }
         iteration = 0
     
+    # Override max_steps with user choice
+    env_config['max_steps'] = max_steps
     env = SimpleEconomyEnv(env_config)
     
     print("\n" + "="*60)
@@ -125,7 +214,7 @@ def run_simulation(checkpoint_path=None, seed=None, verbose=False):
     print("="*60)
     print(f"Checkpoint: iteration {iteration}")
     print(f"Environment: {env_config['n_firms']} firms, {env_config['n_households']} households")
-    print(f"Max Steps: {env_config['max_steps']}")
+    print(f"Max Steps: {max_steps}")
     print(f"Seed: {seed}")
     print("="*60 + "\n")
     
@@ -179,9 +268,6 @@ def run_simulation(checkpoint_path=None, seed=None, verbose=False):
                     'wage': household['wage'],
                     'wealth_type': household['wealth_type'],
                 })
-        
-        if verbose and step % 50 == 0:
-            print(f"Step {step}/{env_config['max_steps']}")
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     results_dir = Path("./simulation_results")
@@ -236,7 +322,7 @@ def run_simulation(checkpoint_path=None, seed=None, verbose=False):
     with open(summary_file, 'w') as f:
         f.write(f"Checkpoint: iteration {iteration}\n")
         f.write(f"Seed: {seed}\n")
-        f.write(f"Max Steps: {env_config['max_steps']}\n")
+        f.write(f"Max Steps: {max_steps}\n")
         f.write(f"\n--- FIRMS ---\n")
         f.write(f"Survivors: {survivors}/{env_config['n_firms']}\n")
         f.write(f"Average Capital: {avg_capital:.2f}\n")
@@ -266,28 +352,29 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run with default settings (latest checkpoint, random seed)
+  # Interactive mode (default)
   python run_simulation.py
 
-  # Run with specific seed
-  python run_simulation.py --seed 42
+  # Non-interactive with specific parameters
+  python run_simulation.py --checkpoint ./checkpoints/checkpoint_000020 --seed 42 --steps 500
 
-  # Run with specific checkpoint
-  python run_simulation.py --checkpoint ./checkpoints/checkpoint_000100
-
-  # Run with both seed and checkpoint
-  python run_simulation.py --checkpoint ./checkpoints/checkpoint_000100 --seed 12345
-
-  # Run with verbose output
-  python run_simulation.py --seed 42 --verbose
+  # Non-interactive with defaults
+  python run_simulation.py --no-interactive
         """
     )
     parser.add_argument("--checkpoint", type=str, default=None, 
-                       help="Path to specific checkpoint (default: latest/favorite)")
+                       help="Path to specific checkpoint (default: interactive selection)")
     parser.add_argument("--seed", type=int, default=None, 
-                       help="Random seed for reproducibility (default: random)")
-    parser.add_argument("--verbose", action='store_true', 
-                       help="Show progress every 50 steps")
+                       help="Random seed for reproducibility (default: interactive selection)")
+    parser.add_argument("--steps", type=int, default=None,
+                       help="Number of simulation steps (default: from config or interactive)")
+    parser.add_argument("--no-interactive", action='store_true',
+                       help="Disable interactive mode (use defaults/args only)")
     args = parser.parse_args()
     
-    run_simulation(checkpoint_path=args.checkpoint, seed=args.seed, verbose=args.verbose)
+    run_simulation(
+        checkpoint_path=args.checkpoint, 
+        seed=args.seed, 
+        max_steps=args.steps,
+        interactive=not args.no_interactive
+    )
