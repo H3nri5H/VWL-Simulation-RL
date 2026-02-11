@@ -5,22 +5,27 @@ import yaml
 import numpy as np
 from pathlib import Path
 from datetime import datetime
-from ray.rllib.algorithms.ppo import PPO
-from env.economy_env import SimpleEconomyEnv
 
-# Suppress ALL Ray output
+# CRITICAL: Set these BEFORE importing Ray
 os.environ['RAY_DEDUP_LOGS'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['RAY_DISABLE_MEMORY_MONITOR'] = '1'
 os.environ['RAY_DISABLE_IMPORT_WARNING'] = '1'
+os.environ['PYTHONWARNINGS'] = 'ignore'
+os.environ['RAY_COLOR_PREFIX'] = '0'
 
 import warnings
 import logging
 warnings.filterwarnings('ignore')
+logging.basicConfig(level=logging.CRITICAL)
 logging.getLogger('ray').setLevel(logging.CRITICAL)
 logging.getLogger('ray.tune').setLevel(logging.CRITICAL)
 logging.getLogger('ray.rllib').setLevel(logging.CRITICAL)
 logging.getLogger('ray.serve').setLevel(logging.CRITICAL)
+logging.getLogger('ray.core').setLevel(logging.CRITICAL)
+
+from ray.rllib.algorithms.ppo import PPO
+from env.economy_env import SimpleEconomyEnv
 
 
 def load_config():
@@ -68,6 +73,22 @@ def find_checkpoint(checkpoint_path=None):
     return checkpoints[-1][0]
 
 
+class SuppressOutput:
+    """Context manager to suppress stdout/stderr"""
+    def __enter__(self):
+        self.old_stdout = sys.stdout
+        self.old_stderr = sys.stderr
+        sys.stdout = open(os.devnull, 'w')
+        sys.stderr = open(os.devnull, 'w')
+        return self
+    
+    def __exit__(self, *args):
+        sys.stdout.close()
+        sys.stderr.close()
+        sys.stdout = self.old_stdout
+        sys.stderr = self.old_stderr
+
+
 def run_simulation(checkpoint_path=None, seed=None, verbose=False):
     """Run single simulation episode with trained policies"""
     if seed is None:
@@ -78,14 +99,8 @@ def run_simulation(checkpoint_path=None, seed=None, verbose=False):
         return
     
     # Suppress Ray output during loading
-    old_stdout, old_stderr = sys.stdout, sys.stderr
-    sys.stdout = sys.stderr = open(os.devnull, 'w')
-    try:
+    with SuppressOutput():
         algo = PPO.from_checkpoint(checkpoint_path)
-    finally:
-        sys.stdout.close()
-        sys.stderr.close()
-        sys.stdout, sys.stderr = old_stdout, old_stderr
     
     metadata_file = Path(checkpoint_path) / "metadata.json"
     if metadata_file.exists():
@@ -110,6 +125,7 @@ def run_simulation(checkpoint_path=None, seed=None, verbose=False):
     print("="*60)
     print(f"Checkpoint: iteration {iteration}")
     print(f"Environment: {env_config['n_firms']} firms, {env_config['n_households']} households")
+    print(f"Max Steps: {env_config['max_steps']}")
     print(f"Seed: {seed}")
     print("="*60 + "\n")
     
@@ -123,15 +139,8 @@ def run_simulation(checkpoint_path=None, seed=None, verbose=False):
     while not done['__all__']:
         actions = {}
         for agent_id in obs.keys():
-            # Suppress deprecation warnings
-            old_stdout, old_stderr = sys.stdout, sys.stderr
-            sys.stdout = sys.stderr = open(os.devnull, 'w')
-            try:
+            with SuppressOutput():
                 actions[agent_id] = algo.compute_single_action(obs[agent_id], policy_id=agent_id)
-            finally:
-                sys.stdout.close()
-                sys.stderr.close()
-                sys.stdout, sys.stderr = old_stdout, old_stderr
         
         obs, rewards, dones, _, infos = env.step(actions)
         done = dones
@@ -227,6 +236,7 @@ def run_simulation(checkpoint_path=None, seed=None, verbose=False):
     with open(summary_file, 'w') as f:
         f.write(f"Checkpoint: iteration {iteration}\n")
         f.write(f"Seed: {seed}\n")
+        f.write(f"Max Steps: {env_config['max_steps']}\n")
         f.write(f"\n--- FIRMS ---\n")
         f.write(f"Survivors: {survivors}/{env_config['n_firms']}\n")
         f.write(f"Average Capital: {avg_capital:.2f}\n")
@@ -251,10 +261,33 @@ def run_simulation(checkpoint_path=None, seed=None, verbose=False):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Run VWL simulation")
-    parser.add_argument("--checkpoint", type=str, default=None, help="Path to specific checkpoint (default: latest)")
-    parser.add_argument("--seed", type=int, default=None, help="Random seed (default: random)")
-    parser.add_argument("--verbose", action='store_true', help="Verbose output")
+    parser = argparse.ArgumentParser(
+        description="Run VWL simulation with trained RL policies",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Run with default settings (latest checkpoint, random seed)
+  python run_simulation.py
+
+  # Run with specific seed
+  python run_simulation.py --seed 42
+
+  # Run with specific checkpoint
+  python run_simulation.py --checkpoint ./checkpoints/checkpoint_000100
+
+  # Run with both seed and checkpoint
+  python run_simulation.py --checkpoint ./checkpoints/checkpoint_000100 --seed 12345
+
+  # Run with verbose output
+  python run_simulation.py --seed 42 --verbose
+        """
+    )
+    parser.add_argument("--checkpoint", type=str, default=None, 
+                       help="Path to specific checkpoint (default: latest/favorite)")
+    parser.add_argument("--seed", type=int, default=None, 
+                       help="Random seed for reproducibility (default: random)")
+    parser.add_argument("--verbose", action='store_true', 
+                       help="Show progress every 50 steps")
     args = parser.parse_args()
     
     run_simulation(checkpoint_path=args.checkpoint, seed=args.seed, verbose=args.verbose)
