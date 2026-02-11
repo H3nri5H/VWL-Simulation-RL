@@ -72,3 +72,8 @@ plots/
 *.jpg
 *.pdf
 config.yaml
+
+notebooks
+
+#database
+database/cloud-sql-proxy

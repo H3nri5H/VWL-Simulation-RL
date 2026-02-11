@@ -16,8 +16,8 @@ initial_ranges:
   # Firm starting values
   firms:
     price:
-      min: 20.0                  # Minimum initial price
-      max: 40.0                  # Maximum initial price
+      min: 10.0                  # Minimum initial price
+      max: 50.0                  # Maximum initial price
     wage:
       min: 15.0                  # Minimum initial wage
       max: 30.0                  # Maximum initial wage
@@ -28,8 +28,8 @@ initial_ranges:
   # Household starting values
   households:
     money:
-      min: 100.0                 # Minimum starting capital
-      max: 200.0                 # Maximum starting capital
+      min: 75.0                 # Minimum starting capital
+      max: 250.0                 # Maximum starting capital
 
 # ============================================================================
 # TRAINING CONFIGURATION
