@@ -2,7 +2,6 @@ import os
 import sys
 import json
 import yaml
-import uuid
 import numpy as np
 from pathlib import Path
 from datetime import datetime
@@ -71,10 +70,6 @@ def find_checkpoint(checkpoint_path=None):
 
 def run_simulation(checkpoint_path=None, seed=None, verbose=False):
     """Run single simulation episode with trained policies"""
-    # Generate unique simulation ID
-    simulation_id = str(uuid.uuid4())[:8]
-    
-    # Use provided seed or generate random one
     if seed is None:
         seed = np.random.randint(0, 1000000)
     
@@ -113,7 +108,6 @@ def run_simulation(checkpoint_path=None, seed=None, verbose=False):
     print("\n" + "="*60)
     print("  VWL SIMULATION - RUNNING EPISODE")
     print("="*60)
-    print(f"Simulation ID: {simulation_id}")
     print(f"Checkpoint: iteration {iteration}")
     print(f"Environment: {env_config['n_firms']} firms, {env_config['n_households']} households")
     print(f"Seed: {seed}")
@@ -163,7 +157,7 @@ def run_simulation(checkpoint_path=None, seed=None, verbose=False):
                 'bankrupt': firm['bankrupt'],
             })
         
-        # Record household data (sampled every 10 steps to reduce file size)
+        # Record household data (sampled every 10 steps)
         if step % 10 == 0:
             for idx, household in enumerate(env.households):
                 household_history.append({
@@ -187,28 +181,28 @@ def run_simulation(checkpoint_path=None, seed=None, verbose=False):
     import csv
     
     # Save firms data
-    firms_file = results_dir / f"firms_sim{simulation_id}_cp{iteration}_seed{seed}_{timestamp}.csv"
+    firms_file = results_dir / f"firms_checkpoint{iteration}_seed{seed}_{timestamp}.csv"
     with open(firms_file, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['simulation_id', 'seed', 'firm_id', 'step', 'price', 'wage', 'employees', 
+        writer.writerow(['seed', 'firm_id', 'step', 'price', 'wage', 'employees', 
                         'inventory', 'production', 'capital', 'profit', 'revenue', 'costs', 
                         'sales', 'quality', 'marketing', 'bankrupt'])
         for firm_id, history in firm_history.items():
             for record in history:
-                writer.writerow([simulation_id, seed, firm_id, record['step'], record['price'], 
+                writer.writerow([seed, firm_id, record['step'], record['price'], 
                                record['wage'], record['employees'], record['inventory'], 
                                record['production'], record['capital'], record['profit'], 
                                record['revenue'], record['costs'], record['sales'], 
                                record['quality'], record['marketing'], record['bankrupt']])
     
     # Save households data
-    households_file = results_dir / f"households_sim{simulation_id}_cp{iteration}_seed{seed}_{timestamp}.csv"
+    households_file = results_dir / f"households_checkpoint{iteration}_seed{seed}_{timestamp}.csv"
     with open(households_file, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['simulation_id', 'seed', 'step', 'household_id', 'money', 'skill_level', 
+        writer.writerow(['seed', 'step', 'household_id', 'money', 'skill_level', 
                         'max_acceptable_price', 'employer', 'wage', 'wealth_type'])
         for record in household_history:
-            writer.writerow([simulation_id, seed, record['step'], record['household_id'], 
+            writer.writerow([seed, record['step'], record['household_id'], 
                            record['money'], record['skill_level'], record['max_acceptable_price'], 
                            record['employer'], record['wage'], record['wealth_type']])
     
@@ -229,9 +223,8 @@ def run_simulation(checkpoint_path=None, seed=None, verbose=False):
             else:
                 segments['mainstream'] += 1
     
-    summary_file = results_dir / f"summary_sim{simulation_id}_seed{seed}_{timestamp}.txt"
+    summary_file = results_dir / f"summary_seed{seed}_{timestamp}.txt"
     with open(summary_file, 'w') as f:
-        f.write(f"Simulation ID: {simulation_id}\n")
         f.write(f"Checkpoint: iteration {iteration}\n")
         f.write(f"Seed: {seed}\n")
         f.write(f"\n--- FIRMS ---\n")
