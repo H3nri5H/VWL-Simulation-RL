@@ -1,8 +1,8 @@
 {
   "iteration": 240,
-  "reward_mean": -11574124.281207599,
+  "reward_mean": 72512.44667063333,
   "episode_len_mean": 365.0,
-  "timestamp": 1770769886,
+  "timestamp": 1770872163,
   "is_favorite": false,
   "checkpoint_path": "C:\\Uni\\Fortgeschrittene KI-Anwendungen\\VWL-Simulation-RL\\checkpoints\\checkpoint_000240",
   "env_config": {

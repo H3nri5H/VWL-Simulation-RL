@@ -43,7 +43,7 @@ initial_ranges:
       high: 0.3     # 30% premium-seeking households
 
 training:
-  iterations: 400
+  iterations: 580
   checkpoint_frequency: 20
   
   ppo:

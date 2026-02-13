@@ -1,0 +1,4 @@
+Checkpoint: iteration 20
+Seed: 323961
+Survivors: 10/10
+Average Capital: 15446694.23
