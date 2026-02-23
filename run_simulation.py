@@ -255,19 +255,17 @@ def run_simulation(checkpoint_path=None, seed=None, max_steps=None, interactive=
                 'bankrupt': firm['bankrupt'],
             })
         
-        # Record household data (sampled every 10 steps)
-        if step % 10 == 0:
-            for idx, household in enumerate(env.households):
-                household_history.append({
-                    'step': step,
-                    'household_id': idx,
-                    'money': household['money'],
-                    'skill_level': household['skill_level'],
-                    'max_acceptable_price': household['max_acceptable_price'],
-                    'employer': household['employer'] if household['employer'] else 'unemployed',
-                    'wage': household['wage'],
-                    'wealth_type': household['wealth_type'],
-                })
+        for idx, household in enumerate(env.households):
+            household_history.append({
+                'step': step,
+                'household_id': idx,
+                'money': household['money'],
+                'skill_level': household['skill_level'],
+                'max_acceptable_price': household['max_acceptable_price'],
+                'employer': household['employer'] if household['employer'] else 'unemployed',
+                'wage': household['wage'],
+                'wealth_type': household['wealth_type'],
+            })
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     results_dir = Path("./simulation_results")
