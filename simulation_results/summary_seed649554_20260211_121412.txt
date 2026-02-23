@@ -1,0 +1,23 @@
+VWL Simulation - Summary
+======================================================================
+
+Checkpoint: Iteration 700
+Seed: 649554 (Mode: random)
+Firms: 10
+Households: 3000
+Steps: 365
+
+Final State:
+----------------------------------------------------------------------
+Bankruptcies: 9/10
+Firm Employment: 250 (8.3%)
+Supplier Employment: 2750 (91.7%)
+Avg Household Money: 325.55
+Total Household Money: 976646.79
+Total Firm Capital: 16461880.89
+
+Database Info:
+  - 3650 firm records
+  - 1095000 household records
+
+To reproduce: Use seed 649554 with checkpoint 700

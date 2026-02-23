@@ -1,0 +1,17 @@
+Checkpoint: iteration 20
+Seed: 711189
+Max Steps: 365
+
+--- FIRMS ---
+Survivors: 9/10
+Average Capital: 11911171.30
+
+Segment Distribution:
+  Budget: 5
+  Mainstream: 0
+  Premium: 4
+
+--- HOUSEHOLDS ---
+Total Households: 3000
+Average Money: 3902.35
+Total Money: 11707048.43

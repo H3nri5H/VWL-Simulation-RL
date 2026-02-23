@@ -51,7 +51,6 @@ ray_results/
 # Logs
 *.log
 logs/
-simulation_results/
 
 # Model Checkpoints
 models/
@@ -60,7 +59,6 @@ models/
 
 # Data
 data/
-*.csv
 metrics/
 
 # Plots
