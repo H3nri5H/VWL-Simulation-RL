@@ -1,0 +1,15 @@
+.git
+.gitignore
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+logs/
+metrics/
+simulation_results/
+checkpoints/
+notebooks/
+.DS_Store
+database/cloud-sql-proxy

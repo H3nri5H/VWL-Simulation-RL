@@ -1,0 +1,21 @@
+services:
+  uploader:
+    build: .
+    container_name: db_uploader
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ../simulation_results:/app/simulation_results
+    depends_on:
+      - cloud-sql-proxy
+
+  cloud-sql-proxy:
+      image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.11.0
+      container_name: db_proxy
+      command:
+        - "--address=0.0.0.0"
+        - "--port=5432"
+        - "cloudcomputing-fortgki-projekt:europe-west3:sim-db-pg-main"
+      restart: always
