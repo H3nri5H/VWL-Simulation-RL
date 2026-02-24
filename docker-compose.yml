@@ -1,5 +1,6 @@
 services:
   app:
+    image: sim_api_image:latest
     container_name: sim_api
     build:
       context: .
@@ -17,6 +18,7 @@ services:
       - ./logs:/app/logs
 
   uploader:
+    image: sim_uploader_image:latest
     container_name: sim_uploader
     build:
       context: ./database
