@@ -1,5 +1,6 @@
 services:
   app:
+    container_name: sim_api
     build:
       context: .
       dockerfile: Dockerfile
@@ -16,6 +17,7 @@ services:
       - ./logs:/app/logs
 
   uploader:
+    container_name: sim_uploader
     build:
       context: ./database
       dockerfile: Dockerfile
@@ -29,6 +31,7 @@ services:
       - cloud-sql-proxy
 
   cloud-sql-proxy:
+    container_name: cloud_sql_proxy
     image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.11.0
     command:
       - "--address=0.0.0.0"
