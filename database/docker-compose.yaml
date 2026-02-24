@@ -12,9 +12,10 @@ services:
       - cloud-sql-proxy
 
   cloud-sql-proxy:
-      image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:latest
+      image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.11.0
       container_name: db_proxy
       command:
         - "--address=0.0.0.0"
+        - "--port=5432"
         - "cloudcomputing-fortgki-projekt:europe-west3:sim-db-pg-main"
       restart: always

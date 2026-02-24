@@ -16,7 +16,37 @@ dotenv.load_dotenv()  # .env-Datei laden, falls vorhanden
 DATA_PATH = os.getenv("DATA_PATH", "./simulation_results/")
 DB_URL = os.getenv("DATABASE_URL")
 
-engine = create_engine(DB_URL)
+
+def resolve_db_url():
+    """Resolve database URL from DATABASE_URL or DB_* fallback variables."""
+    if DB_URL:
+        return DB_URL
+
+    db_host = os.getenv("DB_HOST")
+    db_port = os.getenv("DB_PORT", "5432")
+    db_user = os.getenv("DB_USER")
+    db_password = os.getenv("DB_PASSWORD") or os.getenv("DB_PASSWORT")
+    db_name = os.getenv("DB_NAME")
+
+    if all([db_host, db_user, db_password, db_name]):
+        return f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+    missing = [
+        key
+        for key, value in {
+            "DB_HOST": db_host,
+            "DB_USER": db_user,
+            "DB_PASSWORD": db_password,
+            "DB_NAME": db_name,
+        }.items()
+        if not value
+    ]
+    raise ValueError(
+        "No DB connection configured. Set DATABASE_URL or DB_HOST/DB_USER/DB_PASSWORD/DB_NAME. "
+        f"Missing: {', '.join(missing)}"
+    )
+
+engine = create_engine(resolve_db_url())
 
 
 def upload(df, table_name, engine):
@@ -27,21 +57,20 @@ def upload(df, table_name, engine):
     if table_name == "firms":
         cols = [
             "seed",
-            "step",
             "firm_id",
+            "step",
             "price",
             "wage",
-            "capital",
             "employees",
-            "max_employees",
-            "quality",
-            "marketing",
+            "inventory",
+            "production",
+            "capital",
             "profit",
             "revenue",
             "costs",
-            "inventory",
-            "production",
             "sales",
+            "quality",
+            "marketing",
             "bankrupt",
         ]
     else:  # households
@@ -68,7 +97,7 @@ def upload(df, table_name, engine):
         output.seek(0)
 
         # Der COPY-Befehl streamt die Daten direkt in die DB
-        cursor.copy_from(output, table_name, sep="\t", null="")
+        cursor.copy_from(output, table_name, sep="\t", null="", columns=cols)
         raw_conn.commit()
         return True
     except Exception as e:

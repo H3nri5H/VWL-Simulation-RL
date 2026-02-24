@@ -13,6 +13,7 @@ Ein wirtschaftliches Simulationsmodell, in dem KI-gesteuerte Firmen durch Reinfo
 - [Schnellstart](#-schnellstart)
 - [Projektstruktur](#-projektstruktur)
 - [Verwendung](#-verwendung)
+- [HTTP API](#-http-api)
 - [Einkommensbasiertes Kaufverhalten](#-einkommensbasiertes-kaufverhalten)
 - [Konfiguration](#-konfiguration)
 - [Troubleshooting](#-troubleshooting)
@@ -330,6 +331,91 @@ Ergebnis: Echte Premium-Marke mit Alleinstellungsmerkmal!
 ```
 
 **Premium-Firmen können jetzt richtig in Qualität investieren!** 🚀
+
+---
+
+## 🌐 HTTP API
+
+Du kannst Training und Simulation per HTTP starten.
+
+### API starten
+
+```bash
+uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### API + DB-Services mit Docker starten
+
+```bash
+docker compose up -d --build
+```
+
+Nur API im Container starten:
+
+```bash
+docker compose up -d --build app
+```
+
+Wichtig für den Uploader im Docker-Stack:
+
+1. In `database/.env` entweder `DATABASE_URL` setzen oder `DB_USER`, `DB_PASSWORD`, `DB_NAME` ergänzen.
+2. Für `cloud-sql-proxy` müssen Google Application Default Credentials verfügbar sein (z. B. lokal: `gcloud auth application-default login`).
+
+### Training starten
+
+```bash
+curl -X POST http://localhost:8000/train \
+  -H "Content-Type: application/json" \
+  -d '{"resume": false}'
+```
+
+### Simulation starten
+
+```bash
+curl -X POST http://localhost:8000/simulate \
+  -H "Content-Type: application/json" \
+  -d '{"seed": 42, "steps": 365}'
+```
+
+Wenn kein `checkpoint` angegeben wird, nutzt die API automatisch den neuesten Checkpoint.
+
+Status prüfen (mit `pid` aus der Start-Antwort):
+
+```bash
+curl http://localhost:8000/simulation-status/<pid>
+```
+
+Optional synchron warten bis Simulation fertig ist:
+
+```bash
+curl -X POST "http://localhost:8000/simulate?wait_for_finish=true" \
+  -H "Content-Type: application/json" \
+  -d '{"seed": 42, "steps": 365}'
+```
+
+Optional mit Checkpoint:
+
+```bash
+curl -X POST http://localhost:8000/simulate \
+  -H "Content-Type: application/json" \
+  -d '{"checkpoint": "./checkpoints/checkpoint_000700", "seed": 42, "steps": 365}'
+```
+
+### Checkpoints für Frontend-Dropdown laden
+
+```bash
+curl http://localhost:8000/checkpoints
+```
+
+Die Antwort enthält `path` und `iteration`.
+
+Hinweis: `POST /train` und `POST /simulate` starten jeweils einen Hintergrundprozess und geben `pid` + `log_file` zurück.
+
+Training stoppen:
+
+```bash
+curl -X POST "http://localhost:8000/stop-training"
+```
 
 ---
 
