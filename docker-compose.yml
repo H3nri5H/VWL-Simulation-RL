@@ -33,8 +33,5 @@ services:
     command:
       - "--address=0.0.0.0"
       - "--port=5432"
-      - "--credentials-file=/secrets/adc.json"
       - "cloudcomputing-fortgki-projekt:europe-west3:sim-db-pg-main"
     restart: unless-stopped
-    volumes:
-      - ${HOME}/.config/gcloud/application_default_credentials.json:/secrets/adc.json:ro
