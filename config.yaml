@@ -57,7 +57,7 @@ training:
     entropy_coef: 0.01
   
   resources:
-    num_env_runners: 4
+    num_env_runners: 1
     num_gpus: 0
 
 economy:
