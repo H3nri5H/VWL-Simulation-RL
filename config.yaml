@@ -51,14 +51,17 @@ training:
     gamma: 0.99
     lambda: 0.95
     clip_param: 0.2
-    train_batch_size: 4000
-    minibatch_size: 256
-    num_epochs: 10
+    train_batch_size: 2000
+    minibatch_size: 128
+    num_epochs: 5
     entropy_coef: 0.01
   
   resources:
-    num_env_runners: 1
+    num_env_runners: 0
     num_gpus: 0
+    num_cpus_per_env_runner: 0
+    ray_object_store_memory: 1e9 
+    ray_num_cpus: 1
 
 economy:
   price_bounds:
